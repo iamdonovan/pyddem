@@ -56,7 +56,7 @@ for dir in $(ls -d AST_L1A*); do
         finalimgs=($(ls Z_Num*_DeZoom1_STD-MALT.tif))
         finalmsks=($(ls AutoMask_STD-MALT_Num*.tif))
         finalcors=($(ls Correl_STD-MALT_Num*.tif))
-		# find the last image name. ancient systems like Moulin don't like the -1 index.
+		# find the last image name. ancient systems like RHEL6 don't like the -1 index.
         lastimg=${finalimgs[-1]}
         lastmsk=${finalmsks[-1]}
         lastcor=${finalcors[-1]}
@@ -64,9 +64,11 @@ for dir in $(ls -d AST_L1A*); do
 		# the ancient ones like RHEL6.
 		#imgind=$((${#finalimgs[@]}-1))
 		#mskind=$((${#finalmsks[@]}-1))
+		#corind=$((${#finalcors[@]}-1))
 
 		#lastimg=${finalimgs[imgind]}
 		#lastmsk=${finalmsks[mskind]}
+		#lastcor=${finalmsks[corind]}
 
 		# strip the extension
         laststr="${lastimg%.*}"
@@ -93,8 +95,7 @@ for dir in $(ls -d AST_L1A*); do
 		cd MEC-Malt
 		# apply the mask
 		echo "Applying mask to georeferenced DEM"
-# TEMPORARY
-		#/mn/moulin/project/Software/gdal-1.11.2/swig/python/scripts/gdal_calc.py -A tmp_msk.tif -B tmp_geo.tif --outfile=$dir\_Z.tif --calc="A*B"
+		
 		gdal_calc.py -A tmp_msk.tif -B tmp_geo.tif --outfile=$dir\_Z.tif --calc="B*(A>0)" --NoDataValue=-9999
 		cp -v $dir\_Z.tif $outdir/$datestr #might be good to code orig. wd here.
 		gdaldem hillshade $dir\_Z.tif $outdir/$datestr/$dir\_HS.tif
@@ -116,104 +117,9 @@ for dir in $(ls -d AST_L1A*); do
 		echo "No directory MEC-Malt found in $dir. Exiting."
 	fi
 
-#	if [ -d "Ortho-MEC-Malt" ]; then 
-#		cd Ortho-MEC-Malt
-#		echo $dir		
-#		gdal_translate -a_srs "+proj=utm +zone=$1 +ellps=WGS84 +datum=WGS84 +units=m +no_defs" -a_nodata 0 Orthophotomosaic.tif $dir\_V123.tif
-#		mv -v $dir\_V123.tif $outdir/$datestr #might be good to code orig. wd here.
-#		cd ../
-#	fi
-
 	cd $basedir #back to original directory.
 done 
 
-# # next, create hillshade images.
-# cd MaskedDEMs
-# echo "getting hillshade images."
-# for dem in $(ls *Z.tif); do
-	# demname=${dem%.*}
-	# echo "Creating hillshade for ${demname::-2}"
-	# gdaldem hillshade $dem "${demname::-2}"_HS.tif
-# done
 
-# mkdir -p $basedir/Hillshades && mv *HS.tif $basedir/Hillshades
-
-# # now, sort the DEMs into folders
-# for dem in $(ls *Z.tif); do
-	# #dates are in form mmddyyyy, want them in yyyymmdd.
-	# tmpstr=${dem:11:8}
-	# datestr=${tmpstr:4:4}${tmpstr:0:4}
-
-	# mkdir -p $datestr
-	# mv -v $dem $datestr
-# done
-
-#cd $basedir/OrthoImgs
-# now it's trickier. we want image footprints. hopefully this works.
-#mkdir -p tmp_masks
-#for img in $(ls *.tif); do 
-#	imgname=${img%.*}
-#	gdal_calc.py -A $img --calc="1" --outfile=tmp_masks/$imgname\_mask.tif
-#	cd tmp_masks
-#	gdal_polygonize.py $imgname\_mask.tif -f "ESRI Shapefile" $imgname.shp
-#	cd ..
-#done
-
-## now, we merge everything into a final file called ~/Footprints/Footprints.shp
-#cd tmp_masks
-
-#shapefileArr=($(ls *.shp)) # this way, it's actually an array!
-## update the data table with: "granule", "dem_name", "folder", "date", and remove "DN"
-#shpname=${shapefileArr[0]%.*}
-#ogrinfo $shpname.dbf -sql "ALTER TABLE $shpname DROP COLUMN DN" # will have a field DN after running gdal_polygonize up above.
-#ogrinfo $shpname.dbf -sql "ALTER TABLE $shpname ADD COLUMN granule  string(80)"
-#ogrinfo $shpname.dbf -sql "ALTER TABLE $shpname ADD COLUMN dem_name string(80)"
-#ogrinfo $shpname.dbf -sql "ALTER TABLE $shpname ADD COLUMN folder   string(80)"
-#ogrinfo $shpname.dbf -sql "ALTER TABLE $shpname ADD COLUMN date     date"
-## now, prepare the inputs
-#gname=$shpname
-#tmpdt=${gname:11:8}
-#yr=${tmpdt:4:4}
-#mm=${tmpdt:0:2}
-#dd=${tmpdt:2:2}
-#dtfolder=$yr$mm$dd
-## now, update the table with the right information.
-#ogrinfo $shpname.dbf -dialect SQLite -sql "UPDATE '$shpname' SET granule = '$gname'"
-#ogrinfo $shpname.dbf -dialect SQLite -sql "UPDATE '$shpname' SET dem_name = '${gname}_Z.tif'"
-#ogrinfo $shpname.dbf -dialect SQLite -sql "UPDATE '$shpname' SET folder = '$basedir/MaskedDEMs/$yr$mm$dd'"
-#ogrinfo $shpname.dbf -dialect SQLite -sql "UPDATE '$shpname' SET date = '$yr-$mm-$dd'"
-## finally, copy the first file to Footprints.shp
-#ogr2ogr -f 'ESRI Shapefile' $basedir/Footprints/Footprints.shp ${shapefileArr[0]}
-
-## now, iterate over the rest of the array and merge them into ../../Footprints/Footprints.shp,
-## adding the correct fields and data as we go.
-#for shp in ${shapefileArr[@]:1}; do
-#	shpname=${shp%.*}
-#	ogrinfo $shpname.dbf -sql "ALTER TABLE $shpname DROP COLUMN DN" # will have a field DN after running gdal_polygonize up above.
-#	ogrinfo $shpname.dbf -sql "ALTER TABLE $shpname ADD COLUMN granule  string(80)"
-#	ogrinfo $shpname.dbf -sql "ALTER TABLE $shpname ADD COLUMN dem_name string(80)"
-#	ogrinfo $shpname.dbf -sql "ALTER TABLE $shpname ADD COLUMN folder   string(80)"
-#	ogrinfo $shpname.dbf -sql "ALTER TABLE $shpname ADD COLUMN date     date"
-#	# now, prepare the inputs
-#	gname=$shpname
-#	tmpdt=${gname:11:8}
-#	yr=${tmpdt:4:4}
-#	mm=${tmpdt:0:2}
-#	dd=${tmpdt:2:2}
-#	dtfolder=$yr$mm$dd
-#	# now, update the table with the right information.
-#	ogrinfo $shpname.dbf -dialect SQLite -sql "UPDATE '$shpname' SET granule = '$gname'"
-#	ogrinfo $shpname.dbf -dialect SQLite -sql "UPDATE '$shpname' SET dem_name = '${gname}_Z.tif'"
-#	ogrinfo $shpname.dbf -dialect SQLite -sql "UPDATE '$shpname' SET folder = '$basedir/MaskedDEMs/$yr$mm$dd'"
-#	ogrinfo $shpname.dbf -dialect SQLite -sql "UPDATE '$shpname' SET date = '$yr-$mm-$dd'"
-#	# finally, merge the file to Footprints.shp
-#	ogr2ogr -f 'ESRI Shapefile' -update -append $basedir/Footprints/Footprints.shp $shp
-#done
-
-
-## move up one level and remove the temporary directory tmp_masks
-#cd ..
-#rm -rf tmp_masks
-# change back to basedir. Crack a beer, you're done.
 echo "Processing is complete. Go enjoy a beverage, you've earned it."
 cd $basedir
