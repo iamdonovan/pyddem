@@ -40,7 +40,7 @@ outdir=$basedir/PROCESSED_FINAL
 echo "using projection $1"
 echo "getting masked DEMs and orthoimages."
 
-for dir in $(ls -d AST_L1A*); do
+for dir in $(ls -d AST_*); do
 	echo $dir
 
 	#tmpstr=${dir:11:8}
