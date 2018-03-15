@@ -1,6 +1,6 @@
 # First extract the GeoTiff L1A to a folder named SceneName/RawData (ex AST_L1A_00302212004225011_20170204145459_24750/RawData),
 # then from the folder where **SCENE_FOLDER** (ex AST_L1A_00302212004225011_20170204145459_24750/) is situated run: 
-# WorkFlowASTER_GT_NoMatlab_2017.04.sh -s AST_L1A_00302212004225011_20170204145459_24750 -z "4 +north"
+# WorkFlowASTER_onescene.sh -s AST_L1A_00302212004225011_20170204145459_24750 -z "4 +north"
 # extra options :  -t 30 -n false -c 0.7 -w false -f 1
 
 #Fixed symboles
