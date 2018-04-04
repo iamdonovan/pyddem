@@ -200,7 +200,7 @@ cd ..
 
 
 cd Ortho-MEC-Malt
-mv Orthophotomosaic.tif Orthophotomosaic_FullRes.tif
+montage Orthophotomosaic_T*.tif -mode concatenate -tile 1x  Orthophotomosaic_FullRes.tif
 mv Orthophotomosaic.tfw Orthophotomosaic_FullRes.tfw
 gdal_translate -tr 15 15 -r cubicspline -a_srs "+proj=utm +zone=$UTM +datum=WGS84 +units=m +no_defs" Orthophotomosaic_FullRes.tif Orthophotomosaic.tif
 cd ..
