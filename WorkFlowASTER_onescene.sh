@@ -26,25 +26,25 @@ while getopts "s:z:c:q:wnf:t:yh" opt; do
     h)
       echo "Run the second step in the MMASTER processing chain."
       echo "usage: WorkflowASTER_GT_Pt2.sh -s SCENENAME -z 'UTMZONE' -f ZOOMF -t RESTERR -w false -h"
-      echo "	-s SCENENAME: Aster scenename/folder where data is located."
-      echo "	-z UTMZONE  : UTM Zone of area of interest. Takes form 'NN +north(south)'"
-      echo "	-c CorThr   : Correlation Threshold for estimates of Z min and max (optional, default : 0.7)"
-      echo "	-q SzW      : Size of the correlation window in the last step (optional, default : 4, mean 9*9)"
-      echo "	-w mask     : Mask large water areas."
+      echo "    -s SCENENAME: Aster scenename/folder where data is located."
+      echo "    -z UTMZONE  : UTM Zone of area of interest. Takes form 'NN +north(south)'"
+      echo "    -c CorThr   : Correlation Threshold for estimates of Z min and max (optional, default : 0.7)"
+      echo "    -q SzW      : Size of the correlation window in the last step (optional, default : 4, mean 9*9)"
+      echo "    -w mask     : Mask large water areas."
       echo "    -n NoCorDEM : Compute DEM with the uncorrected 3B image (computing with correction as well)"
       echo "    -f ZOOMF    : Run with different final resolution   (optional; default: 1)"
       echo "    -t RESTERR  : Run with different terrain resolution (optional; default: 30)"
       echo "    -y do_ply   : Write point cloud (DEM drapped with ortho in ply)"
-      echo "	-h	  : displays this message and exits."
+      echo "    -h          : displays this message and exits."
       echo " "
       exit 0
       ;;
-	n)
+    n)
       NoCorDEM=$OPTARG
       ;;
-	y)
+    y)
       do_ply=$OPTARG
-      ;;	
+      ;;    
     s)
       name=$OPTARG
       scene_set=1
@@ -53,11 +53,11 @@ while getopts "s:z:c:q:wnf:t:yh" opt; do
       UTM=$OPTARG
       utm_set=1
       ;;    
-	c)
+    c)
       CorThr=$OPTARG
       echo "CorThr set to $CorThr"
       ;;  
-	q)
+    q)
       SzW=$OPTARG
       echo "SzW set to $SzW"
       ;;
@@ -86,7 +86,31 @@ echo $name
 echo $UTM
 cd $name
 pwd
-cd RawData
+
+# unziping data and archiving files
+if [ ! -d "RawData"]; then 
+    mkdir RawData
+    mkdir zips
+    find ./ -maxdepth 1 -name "*.zip" | while read filename; do
+        f=$(basename "$filename")
+        unzip $f -d "RawData"
+        mv "$f" "zips"
+    done  
+
+    echo "Moved and extracted zip files"
+
+    find ./ -maxdepth 1 -name "*.met" | while read filename; do
+        f=$(basename "$filename")
+        mv "$f" "zips"
+    done  
+
+    echo "Moved met files"
+
+    cd RawData
+else
+    cd RawData
+fi
+
 pwd
 mm3d SateLib ASTERGT2MM $name
 cd ..
@@ -148,8 +172,8 @@ mv $name$Bcor $name$Bt
 
 # if we're using a water mask, we run that here.
 if [ "$water_mask" = true ]; then #check variable name!
-	cp $MMSCRIPTS_HOME/WorkFlow_WaterMask.sh .
-	bash WorkFlow_WaterMask.sh $name $UTM
+    cp $MMSCRIPTS_HOME/WorkFlow_WaterMask.sh .
+    bash WorkFlow_WaterMask.sh $name $UTM
 fi
 
 # Correlation with corrected image
@@ -159,7 +183,7 @@ mm3d Malt Ortho ".*$name(|_3N|_3B).tif" GRIBin ImMNT="$name(_3N|_3B).tif" ImOrth
 mm3d Tawny Ortho-MEC-Malt/ RadiomEgal=0
 
 if [ "$do_ply" = true ]; then
-	mm3d Nuage2Ply MEC-Malt/NuageImProf_STD-MALT_Etape_9.xml Out=$name.ply Attr=Ortho-MEC-Malt/Orthophotomosaic.tif
+    mm3d Nuage2Ply MEC-Malt/NuageImProf_STD-MALT_Etape_9.xml Out=$name.ply Attr=Ortho-MEC-Malt/Orthophotomosaic.tif
 fi
 
 cd MEC-Malt
