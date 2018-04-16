@@ -196,11 +196,13 @@ mv Z_Num9_DeZoom1_STD-MALT.xml Z_Num9_DeZoom1_STD-MALT_FullRes.xml
 gdal_translate -tr $RESTERR $RESTERR -r cubicspline -a_srs "+proj=utm +zone=$UTM +datum=WGS84 +units=m +no_defs" Z_Num9_DeZoom1_STD-MALT_FullRes.tif Z_Num9_DeZoom1_STD-MALT.tif
 cd ..
 
-
-
-
 cd Ortho-MEC-Malt
-montage Orthophotomosaic_T*.tif -mode concatenate -tile 1x  Orthophotomosaic_FullRes.tif
+# if there are no tiles, we have nothing to do.
+if [ -f Orthophotomosaic_Tile_0_0.tif ]; then
+    montage Orthophotomosaic_T*.tif -mode concatenate -tile 1x  Orthophotomosaic_FullRes.tif
+else
+    cp Orthophotomosaic.tif Orthophotomosaic_FullRes.tif
+fi
 mv Orthophotomosaic.tfw Orthophotomosaic_FullRes.tfw
 gdal_translate -tr 15 15 -r cubicspline -a_srs "+proj=utm +zone=$UTM +datum=WGS84 +units=m +no_defs" Orthophotomosaic_FullRes.tif Orthophotomosaic.tif
 cd ..

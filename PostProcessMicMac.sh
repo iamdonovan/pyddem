@@ -6,7 +6,50 @@
 #	- footprints of DEMs (can use to clip edges, for example)
 # use: bash PostProcessMicMac.sh utm_zone,
 #	where utm_zone has the form ""6 +north" for the projection used in processing.
+utm_set=0
+sub_set=0
+while getopts "z:d:h" opt; do
+  case $opt in
+    h)
+      echo "Post-process outputs from MMASTER into nice files to use."
+      echo "usage: PostProcessMicMac.sh -z 'UTMZONE' -h"
+      echo "    -z UTMZONE  : UTM Zone of area of interest. Takes form 'NN +north(south)'"
+      echo "    -d SUBDIR   : Subfolder(s) where MMASTER outputs are written. If not set, looks for folders of form AST_L1A..."
+      echo "    -h          : displays this message and exits."
+      echo " "
+      exit 0
+      ;;
+    z)
+      UTM=$OPTARG
+      utm_set=1
+      ;;
+    d)
+      subList+=("$OPTARG")
+      sub_set=1
+      ;;
+    \?)
+      echo "RunMicMacAster.sh: Invalid option: -$OPTARG" >&2
+      exit 1
+      ;;
+    :)
+      echo "RunMicMacAster.sh: Option -$OPTARG requires an argument." >&2
+      exit 1
+      ;;
+  esac
+done
 
+if [ $utm_set -eq 0 ]; then
+      echo "Error: UTM Zone has not been set."
+      echo "call RunMicMacAster.sh -h for details on usage."
+      echo " "
+      exit 1
+fi
+
+if [ $sub_set -eq 0 ]; then
+    echo "No subdirectories specified, looking for directories of form AST_*"
+    subList=$(ls -d AST_*);
+fi
+    
 resize_rasters () {
     image1=$1
     image2=$2
@@ -37,10 +80,10 @@ basedir=$(pwd) #get the directory that we're starting in.
 mkdir -p PROCESSED_FINAL
 outdir=$basedir/PROCESSED_FINAL
 
-echo "using projection $1"
+echo "using projection $UTM"
 echo "getting masked DEMs and orthoimages."
 
-for dir in $(ls -d AST_*); do
+for dir in ${subList[@]}; do
 	echo $dir
 
 	#tmpstr=${dir:11:8}
@@ -77,18 +120,18 @@ for dir in $(ls -d AST_*); do
 
 		# now, assign the CRS we got to the mask, dem, and apply.
 		echo "Georeferencing correlation mask"
-		gdal_translate -a_nodata 0 -a_srs "+proj=utm +zone=$1 +ellps=WGS84 +datum=WGS84 +units=m +no_defs" $lastcor $dir\_CORR.tif
+		gdal_translate -a_nodata 0 -a_srs "+proj=utm +zone=$UTM +ellps=WGS84 +datum=WGS84 +units=m +no_defs" $lastcor $dir\_CORR.tif
 		echo "Creating temporary georeferenced DEM"
-		gdal_translate -a_srs "+proj=utm +zone=$1 +ellps=WGS84 +datum=WGS84 +units=m +no_defs" $lastimg tmp_geo.tif
+		gdal_translate -a_srs "+proj=utm +zone=$UTM +ellps=WGS84 +datum=WGS84 +units=m +no_defs" $lastimg tmp_geo.tif
 		echo "Creating temporary georeferenced Mask"
-		gdal_translate -a_srs "+proj=utm +zone=$1 +ellps=WGS84 +datum=WGS84 +units=m +no_defs" -a_nodata 0 $lastmsk tmp_msk.tif
+		gdal_translate -a_srs "+proj=utm +zone=$UTM +ellps=WGS84 +datum=WGS84 +units=m +no_defs" -a_nodata 0 $lastmsk tmp_msk.tif
 		cd ../
 		if [ -d "Ortho-MEC-Malt" ]; then 
 			cd Ortho-MEC-Malt
 			echo "Creating double size correlation mask for ortho"
-			gdal_translate -tr 15 15 -a_srs "+proj=utm +zone=$1 +ellps=WGS84 +datum=WGS84 +units=m +no_defs" -a_nodata 0 ../MEC-Malt/$lastmsk tmp_mskDouble.tif
+			gdal_translate -tr 15 15 -a_srs "+proj=utm +zone=$UTM +ellps=WGS84 +datum=WGS84 +units=m +no_defs" -a_nodata 0 ../MEC-Malt/$lastmsk tmp_mskDouble.tif
 			echo "Creating temporary georeferenced ortho"
-			gdal_translate -tr 15 15 -a_srs "+proj=utm +zone=$1 +ellps=WGS84 +datum=WGS84 +units=m +no_defs" Orthophotomosaic.tif tmp_V123.tif
+			gdal_translate -tr 15 15 -a_srs "+proj=utm +zone=$UTM +ellps=WGS84 +datum=WGS84 +units=m +no_defs" Orthophotomosaic.tif tmp_V123.tif
             resize_rasters tmp_mskDouble.tif tmp_V123.tif
 			cd ../
 		fi
