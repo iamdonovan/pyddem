@@ -172,8 +172,7 @@ mv $name$Bcor $name$Bt
 
 # if we're using a water mask, we run that here.
 if [ "$water_mask" = true ]; then #check variable name!
-    cp $MMSCRIPTS_HOME/WorkFlow_WaterMask.sh .
-    bash WorkFlow_WaterMask.sh $name $UTM
+    WorkFlow_WaterMask.sh $name $UTM
 fi
 
 # Correlation with corrected image
