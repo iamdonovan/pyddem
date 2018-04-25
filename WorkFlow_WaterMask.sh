@@ -25,10 +25,10 @@ mm3d Malt Ortho ".*$name(|_3N|_3B).tif" GRIBin ImMNT="$name(_3N|_3B).tif" ImOrth
 #GDAL MASKING
 
 #read the UTM coordinate of UL corner and size of image
-xminUTM=$(grep OriginePlani MEC-WaterMask/Z_Num9_DeZoom1_STD-MALT.xml| grep -o -P '>\d+'|grep -o -P '\d+')
-ymaxUTM=$(grep OriginePlani MEC-WaterMask/Z_Num9_DeZoom1_STD-MALT.xml| grep -o -P '\d+<'|grep -o -P '\d+')
-szx=$(grep NombrePixels MEC-WaterMask/Z_Num9_DeZoom1_STD-MALT.xml| grep -o -P '>\d+'|grep -o -P '\d+')
-szy=$(grep NombrePixels MEC-WaterMask/Z_Num9_DeZoom1_STD-MALT.xml| grep -o -P '\d+<'|grep -o -P '\d+')
+xminUTM=$(grep OriginePlani MEC-WaterMask/Z_Num5_DeZoom1_STD-MALT.xml| grep -o -P '>\d+'|grep -o -P '\d+')
+ymaxUTM=$(grep OriginePlani MEC-WaterMask/Z_Num5_DeZoom1_STD-MALT.xml| grep -o -P '\d+<'|grep -o -P '\d+')
+szx=$(grep NombrePixels MEC-WaterMask/Z_Num5_DeZoom1_STD-MALT.xml| grep -o -P '>\d+'|grep -o -P '\d+')
+szy=$(grep NombrePixels MEC-WaterMask/Z_Num5_DeZoom1_STD-MALT.xml| grep -o -P '\d+<'|grep -o -P '\d+')
 
 #Computing min/max coordinates in UTM
 xmaxUTM=$(echo $xminUTM+30*$szx|bc)
