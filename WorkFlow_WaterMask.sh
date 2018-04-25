@@ -77,7 +77,7 @@ rm Corner1.txt Corner2.txt Corner1Deg.txt Corner2Deg.txt
 
 mkdir TA
 #Clip the area of interest (using min and max from .met) and convert to UTM
-ogr2ogr -t_srs "+proj=utm +zone=$UTM +ellps=WGS84 +datum=WGS84 +units=m +no_defs" -clipsrc $xminDeg $yminDeg $xmaxDeg $ymaxDeg water_zoneUTM.shp /uio/lagringshotell/geofag/icemass/icemass-research/Scripts/Aster_Pipeline/WaterPoly/water_polygons.shp water_polygons.shp
+ogr2ogr -t_srs "+proj=utm +zone=$UTM +ellps=WGS84 +datum=WGS84 +units=m +no_defs" -clipsrc $xminDeg $yminDeg $xmaxDeg $ymaxDeg water_zoneUTM.shp /uio/lagringshotell/geofag/icemass/icemass-research/Scripts/Aster_Pipeline/WaterPoly/water_polygons.shp
 #Rasterize data using min max from MEC-Mini/Z_Num9_DeZoom1_STD-MALT.xml
 gdal_rasterize -a FID -ot Byte -i -burn 255 -of GTiff -tr 30 30 -te $xminUTM $yminUTM $xmaxUTM $ymaxUTM -l water_zoneUTM water_zoneUTM.shp TA/TA_LeChantier_Masq_ini.tif
 rm water_zoneUTM.shp
