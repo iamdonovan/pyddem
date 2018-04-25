@@ -17,11 +17,11 @@ ZoomF=1
 RESTERR=30
 CorThr=0.7
 SzW=5
-water_mask=false
+nameWaterMask=false
 do_ply=false
 NoCorDEM=false
 
-while getopts "s:z:c:q:wnf:t:yh" opt; do
+while getopts "s:z:c:q:w:nf:t:yh" opt; do
   case $opt in
     h)
       echo "Run the second step in the MMASTER processing chain."
@@ -30,7 +30,7 @@ while getopts "s:z:c:q:wnf:t:yh" opt; do
       echo "    -z UTMZONE  : UTM Zone of area of interest. Takes form 'NN +north(south)'"
       echo "    -c CorThr   : Correlation Threshold for estimates of Z min and max (optional, default : 0.7)"
       echo "    -q SzW      : Size of the correlation window in the last step (optional, default : 4, mean 9*9)"
-      echo "    -w mask     : Mask large water areas."
+      echo "    -w mask     : Name of shapefile to skip masked areas (usually water, this is optional, default : false)."
       echo "    -n NoCorDEM : Compute DEM with the uncorrected 3B image (computing with correction as well)"
       echo "    -f ZOOMF    : Run with different final resolution   (optional; default: 1)"
       echo "    -t RESTERR  : Run with different terrain resolution (optional; default: 30)"
@@ -62,7 +62,8 @@ while getopts "s:z:c:q:wnf:t:yh" opt; do
       echo "SzW set to $SzW"
       ;;
     w)
-      water_mask=$OPTARG
+      echo "Water mask selected: " $OPTARG
+	  nameWaterMask=$OPTARG
       ;;
     f)
       ZoomF=$OPTARG
@@ -171,8 +172,8 @@ mv $name$Bt ImOrig/$name$Bt
 mv $name$Bcor $name$Bt
 
 # if we're using a water mask, we run that here.
-if [ "$water_mask" = true ]; then #check variable name!
-    WorkFlow_WaterMask.sh $name $UTM
+if ![ "$nameWaterMask" = false ]; then #check variable name!
+    WorkFlow_WaterMask.sh $name $UTM $nameWaterMask
 fi
 
 # Correlation with corrected image

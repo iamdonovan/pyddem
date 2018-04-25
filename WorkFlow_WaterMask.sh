@@ -3,9 +3,13 @@ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/lib64/cmake
 
 echo $1
 echo $2
+echo $3
 name=$1
 UTM=$2
-echo $name
+nameWaterMask=$3
+
+echo "For scene " $name
+echo "Using water mask " $nameWaterMask
 
 #Fixed symboles
 
@@ -77,7 +81,7 @@ rm Corner1.txt Corner2.txt Corner1Deg.txt Corner2Deg.txt
 
 mkdir TA
 #Clip the area of interest (using min and max from .met) and convert to UTM
-ogr2ogr -t_srs "+proj=utm +zone=$UTM +ellps=WGS84 +datum=WGS84 +units=m +no_defs" -clipsrc $xminDeg $yminDeg $xmaxDeg $ymaxDeg water_zoneUTM.shp /uio/lagringshotell/geofag/icemass/icemass-research/Scripts/Aster_Pipeline/WaterPoly/water_polygons.shp
+ogr2ogr -t_srs "+proj=utm +zone=$UTM +ellps=WGS84 +datum=WGS84 +units=m +no_defs" -clipsrc $xminDeg $yminDeg $xmaxDeg $ymaxDeg water_zoneUTM.shp $nameWaterMask
 #Rasterize data using min max from MEC-Mini/Z_Num9_DeZoom1_STD-MALT.xml
 gdal_rasterize -a FID -ot Byte -i -burn 255 -of GTiff -tr 30 30 -te $xminUTM $yminUTM $xmaxUTM $ymaxUTM -l water_zoneUTM water_zoneUTM.shp TA/TA_LeChantier_Masq_ini.tif
 rm water_zoneUTM.shp
@@ -85,6 +89,8 @@ rm water_zoneUTM.shx
 rm water_zoneUTM.prj
 rm water_zoneUTM.dbf
 convert TA/TA_LeChantier_Masq_ini.tif -morphology Open Octagon:1 -morphology Dilate Octagon:12 TA/TA_LeChantier_Masq.tif
+
+rm TA/TA_LeChantier_Masq_ini.tif
 
 cp MEC-WaterMask/Z_Num5_DeZoom1_STD-MALT.xml TA/TA_LeChantier_Masq.xml
 cp MEC-WaterMask/Z_Num5_DeZoom1_STD-MALT.xml TA/TA_LeChantier.xml

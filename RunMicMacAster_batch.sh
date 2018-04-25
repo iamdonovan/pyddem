@@ -7,7 +7,7 @@ run_clean=1
 run_again=1
 CorThr=0.7
 SzW=5
-water_mask=false #default no water mask
+nameWaterMask=false #default no water mask
 NoCorDEM=false #default don't compute uncorrected DEM
 ZoomF=1 #this has to be passed to PostProcessMicMac, and WorkFlowPt2
 RESTERR=30
@@ -15,7 +15,7 @@ do_ply=false #default no ply point cloud generation
 
 # figure out what options we were passed: 
 #":hz:wnc:f:t:pr" 
-while getopts "z:c:q:wnf:t:yprh" opt; do
+while getopts "z:c:q:w:nf:t:yprh" opt; do
   case $opt in
     h)
       echo "Run the MicMac-based ASTER DEM pipeline from start to finish."
@@ -24,7 +24,7 @@ while getopts "z:c:q:wnf:t:yprh" opt; do
       echo "    -z UTMZONE  : UTM Zone of area of interest. Takes form 'NN +north(south)'"
       echo "    -c CorThr   : Correlation Threshold for estimates of Z min and max (optional, default : 0.7)"
       echo "    -q SzW      : Size of the correlation window in the last step (optional, default : 2, mean 5*5)"
-      echo "    -w          : Mask large water areas (optional)."
+      echo "    -w          : Name of shapefile to skip masked areas (usually water, this is optional, default : false)."
       echo "    -n NoCorDEM : Compute DEM with the uncorrected 3B image (computing with correction as well)"
       echo "    -f ZOOMF    : Run with different final resolution   (optional; default: 1)"
       echo "    -t RESTERR  : Run with different terrain resolution (optional; default: 30)"
@@ -48,8 +48,8 @@ while getopts "z:c:q:wnf:t:yprh" opt; do
       echo "SzW set to $SzW"
       ;;
     w)
-      echo "Water mask selected." #going to change this to a flag that we pass to WFpt2
-      water_mask=true
+      echo "Water mask selected: " $OPTARG
+	  nameWaterMask=$OPTARG
       ;;
 	n)
 	  echo "DEM with uncorrected 3B will be computed"
@@ -130,7 +130,7 @@ if [ $run_again -eq 1 ]; then
 	    unzip $f -d "$f1/RawData"
 	    mv "$f" "$f1"
 	    echo "start=\$SECONDS" >> ProcessAll.sh
-	    echo "WorkFlowASTER_onescene.sh -c " $CorThr " -q " $SzW " -s " $f1 " -z \""$UTMZone"\" -w " $water_mask " -f " $ZoomF " -t " $RESTERR " -n " $NoCorDEM  " -y " $do_ply >> ProcessAll.sh
+	    echo "WorkFlowASTER_onescene.sh -c " $CorThr " -q " $SzW " -s " $f1 " -z \""$UTMZone"\" -w " $nameWaterMask " -f " $ZoomF " -t " $RESTERR " -n " $NoCorDEM  " -y " $do_ply >> ProcessAll.sh
 	    echo "duration=\$(( SECONDS - start ))" >> ProcessAll.sh
 	    echo "echo Procesing of " $f1 " took \" \$duration \" s to process >> Timings.txt" >> ProcessAll.sh
 	done  
