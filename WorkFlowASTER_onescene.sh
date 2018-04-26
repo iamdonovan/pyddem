@@ -172,7 +172,7 @@ mv $name$Bt ImOrig/$name$Bt
 mv $name$Bcor $name$Bt
 
 # if we're using a water mask, we run that here.
-if ![ "$nameWaterMask" = false ]; then #check variable name!
+if [ "$nameWaterMask" != false ]; then #check variable name!
     WorkFlow_WaterMask.sh $name $UTM $nameWaterMask
 fi
 
