@@ -151,4 +151,4 @@ fi
 echo | bash ProcessAll.sh
 
 # have to pass zone, zoomF to PostProcessMicMac.sh
-bash PostProcessMicMac.sh "$UTMZone" $ZoomF
+bash PostProcessMicMac.sh -z "$UTMZone"
