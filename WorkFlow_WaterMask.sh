@@ -88,7 +88,7 @@ rm water_zoneUTM.shp
 rm water_zoneUTM.shx
 rm water_zoneUTM.prj
 rm water_zoneUTM.dbf
-convert TA/TA_LeChantier_Masq_ini.tif -morphology Open Octagon:1 -morphology Dilate Octagon:12 TA/TA_LeChantier_Masq.tif
+convert TA/TA_LeChantier_Masq_ini.tif -morphology Dilate Octagon:15 TA/TA_LeChantier_Masq.tif
 
 rm TA/TA_LeChantier_Masq_ini.tif
 
