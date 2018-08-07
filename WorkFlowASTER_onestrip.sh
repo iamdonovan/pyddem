@@ -193,7 +193,7 @@ gdal_translate -tr $RESTERR $RESTERR -r cubicspline -a_srs "+proj=utm +zone=$UTM
 mv Z_Num9_DeZoom1_STD-MALT.tif Z_Num9_DeZoom1_STD-MALT_FullRes.tif
 mv Z_Num9_DeZoom1_STD-MALT.tfw Z_Num9_DeZoom1_STD-MALT_FullRes.tfw
 mv Z_Num9_DeZoom1_STD-MALT.xml Z_Num9_DeZoom1_STD-MALT_FullRes.xml
-gdal_translate -tr $RESTERR $RESTERR -r cubicspline -a_srs "+proj=utm +zone=$UTM +datum=WGS84 +units=m +no_defs" Z_Num9_DeZoom1_STD-MALT_FullRes.tif Z_Num9_DeZoom1_STD-MALT.tif
+gdal_translate -tr $RESTERR $RESTERR -r cubicspline -a_srs "+proj=utm +zone=$UTM +datum=WGS84 +units=m +no_defs" -co TFW=YES Z_Num9_DeZoom1_STD-MALT_FullRes.tif Z_Num9_DeZoom1_STD-MALT.tif
 cd ..
 
 cd Ortho-MEC-Malt
