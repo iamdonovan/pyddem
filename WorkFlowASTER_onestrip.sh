@@ -196,6 +196,16 @@ mv Z_Num9_DeZoom1_STD-MALT.xml Z_Num9_DeZoom1_STD-MALT_FullRes.xml
 gdal_translate -tr $RESTERR $RESTERR -r cubicspline -a_srs "+proj=utm +zone=$UTM +datum=WGS84 +units=m +no_defs" -co TFW=YES Z_Num9_DeZoom1_STD-MALT_FullRes.tif Z_Num9_DeZoom1_STD-MALT.tif
 cd ..
 
+# computing orbit angles on DEM
+mm3d SateLib ASTERProjAngle MEC-Malt\Z_Num9_DeZoom1_STD-MALT MEC-Malt\AutoMask_STD-MALT_Num_8.tif $name
+cp MEC-Malt\Z_Num9_DeZoom1_STD-MALT.tfw TrackAngleMap_nonGT.tfw
+mv TrackAngleMap.tif TrackAngleMap_nonGT.tif
+gdal_translate -a_srs "+proj=utm +zone=$UTM +datum=WGS84 +units=m +no_defs" -a_nodata 0 TrackAngleMap_nonGT.tif TrackAngleMap.tif
+rm TrackAngleMap_nonGT*
+
+
+
+
 cd Ortho-MEC-Malt
 # if there are no tiles, we have nothing to do.
 if [ -f Orthophotomosaic_Tile_0_0.tif ]; then
