@@ -200,7 +200,7 @@ gdal_translate -tr $RESTERR $RESTERR -r cubicspline -a_srs "+proj=utm +zone=$UTM
 cd ..
 
 # computing orbit angles on DEM
-mm3d SateLib ASTERProjAngle MEC-Malt\Z_Num9_DeZoom1_STD-MALT MEC-Malt\AutoMask_STD-MALT_Num_8.tif $name
+mm3d SateLib ASTERProjAngle MEC-Malt/Z_Num9_DeZoom1_STD-MALT MEC-Malt/AutoMask_STD-MALT_Num_8.tif $name$N
 cp MEC-Malt\Z_Num9_DeZoom1_STD-MALT.tfw TrackAngleMap_nonGT.tfw
 mv TrackAngleMap.tif TrackAngleMap_nonGT.tif
 gdal_translate -a_srs "+proj=utm +zone=$UTM +datum=WGS84 +units=m +no_defs" -a_nodata 0 TrackAngleMap_nonGT.tif TrackAngleMap.tif
