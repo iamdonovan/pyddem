@@ -89,7 +89,7 @@ cd $name
 pwd
 
 # unziping data and archiving files
-if [ ! -d "RawData"]; then 
+if [ ! -d "RawData" ]; then 
     mkdir RawData
     mkdir zips
     find ./ -maxdepth 1 -name "*.zip" | while read filename; do
