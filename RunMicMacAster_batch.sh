@@ -1,7 +1,7 @@
-#!/bin/bash
-# pre-set a variable in case we didn't get passed the water mask option.
-# there's probably a cleaner way to set this up, and I'll get there eventually.
-#WFpt2="WorkFlowASTER_GT_Pt2_2016.11_NoWaterMask.sh"
+# Put all the L1A zip files in a folder, then, from that folder, call something like: 
+# RunMicMacAster_batch.sh -z "4 +north"
+# extra options :  -t 30 -n false -c 0.7 -w false -f 1
+
 utm_set=0
 run_clean=1
 run_again=1
@@ -20,7 +20,7 @@ while getopts "z:c:q:w:nf:t:yprh" opt; do
     h)
       echo "Run the MicMac-based ASTER DEM pipeline from start to finish."
       echo "Call from the the directory where your zip and .met files are."
-      echo "usage: RunMicMacAster_NoMatlab -z 'UTMZONE' -f ZOOMF -t RESTERR -wrph"
+      echo "usage: RunMicMacAster_batch.sh -z 'UTMZONE' -f ZOOMF -t RESTERR -wrph"
       echo "    -z UTMZONE  : UTM Zone of area of interest. Takes form 'NN +north(south)'"
       echo "    -c CorThr   : Correlation Threshold for estimates of Z min and max (optional, default : 0.7)"
       echo "    -q SzW      : Size of the correlation window in the last step (optional, default : 2, mean 5*5)"

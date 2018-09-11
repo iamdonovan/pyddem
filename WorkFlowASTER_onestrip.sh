@@ -1,6 +1,5 @@
-# First extract the GeoTiff L1A to a folder named SceneName/RawData (ex AST_L1A_00302212004225011_20170204145459_24750/RawData),
-# then from the folder where **SCENE_FOLDER** (ex AST_L1A_00302212004225011_20170204145459_24750/) is situated run: 
-# WorkFlowASTER_GT_NoMatlab_2017.04.sh -s AST_L1A_00302212004225011_20170204145459_24750 -z "4 +north"
+# Put all the L1A zip files in a folder 'AST_L1A_MyStrip', then, from the folder above, call something like: 
+# WorkFlowASTER_onestrip.sh -s AST_L1A_MyStrip -z "4 +north"
 # extra options :  -t 30 -n false -c 0.7 -w false -f 1
 
 #Fixed symboles
@@ -25,7 +24,7 @@ while getopts "s:z:c:q:wnf:t:yh" opt; do
   case $opt in
     h)
       echo "Run the second step in the MMASTER processing chain."
-      echo "usage: WorkflowASTER_GT_Pt2.sh -s SCENENAME -z 'UTMZONE' -f ZOOMF -t RESTERR -w false -h"
+      echo "usage: WorkFlowASTER_onestrip.sh -s SCENENAME -z 'UTMZONE' -f ZOOMF -t RESTERR -w false -h"
       echo "    -s SCENENAME: Folder where zips of stips are located."
       echo "    -z UTMZONE  : UTM Zone of area of interest. Takes form 'NN +north(south)'"
       echo "    -c CorThr   : Correlation Threshold for estimates of Z min and max (optional, default : 0.7)"
