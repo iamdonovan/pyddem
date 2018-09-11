@@ -4,6 +4,8 @@
 # extra options :  -t 30 -n false -c 0.7 -w false -f 1
 
 #Fixed symboles
+N="_3N"
+B="_3B"
 Nx="_3N.xml"
 Bx="_3B.xml"
 Nt="_3N.tif"

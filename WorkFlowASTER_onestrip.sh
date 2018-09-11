@@ -3,6 +3,8 @@
 # extra options :  -t 30 -n false -c 0.7 -w false -f 1
 
 #Fixed symboles
+N="_3N"
+B="_3B"
 Nx="_3N.xml"
 Bx="_3B.xml"
 Nt="_3N.tif"
@@ -196,8 +198,8 @@ gdal_translate -tr $RESTERR $RESTERR -r cubicspline -a_srs "+proj=utm +zone=$UTM
 cd ..
 
 # computing orbit angles on DEM
-mm3d SateLib ASTERProjAngle MEC-Malt\Z_Num9_DeZoom1_STD-MALT MEC-Malt\AutoMask_STD-MALT_Num_8.tif $name
-cp MEC-Malt\Z_Num9_DeZoom1_STD-MALT.tfw TrackAngleMap_nonGT.tfw
+mm3d SateLib ASTERProjAngle MEC-Malt/Z_Num9_DeZoom1_STD-MALT MEC-Malt/AutoMask_STD-MALT_Num_8.tif $name$N
+cp MEC-Malt/Z_Num9_DeZoom1_STD-MALT.tfw TrackAngleMap_nonGT.tfw
 mv TrackAngleMap.tif TrackAngleMap_nonGT.tif
 gdal_translate -a_srs "+proj=utm +zone=$UTM +datum=WGS84 +units=m +no_defs" -a_nodata 0 TrackAngleMap_nonGT.tif TrackAngleMap.tif
 rm TrackAngleMap_nonGT*
