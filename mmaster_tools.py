@@ -18,7 +18,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 from shapely.geometry.polygon import Polygon, orient
 from shapely.geometry import mapping, LineString, Point
 from shapely.ops import cascaded_union, transform
-from pybob.coreg_tools import dem_coregistration
+from pybob.coreg_tools import dem_coregistration, create_stable_mask
 from pybob.coreg_tools import false_hillshade
 from pybob.coreg_tools import get_slope
 from pybob.coreg_tools import final_histogram
@@ -302,6 +302,9 @@ def preprocess(mst_dem, slv_dem, glac_mask=None, land_mask=None, cwd='.',pts=Fal
     out_dir = os.path.sep.join([cwd, 'coreg'])
     mst_coreg, slv_coreg, shift_params = dem_coregistration(mst_dem, slv_name, glaciermask=glac_mask, 
                                                             landmask=land_mask, outdir=out_dir,pts=pts)
+    stable_mask = create_stable_mask(slv_coreg, glac_mask, land_mask)
+    slv_coreg.mask(stable_mask)
+    
     print(slv_coreg.filename)
     # remove coreg folder, save slv as *Zadj1.tif, but save output.pdf
     shutil.move(os.path.sep.join([out_dir, 'CoRegistration_Results.pdf']), os.path.sep.join([cwd, 'CoRegistration_Results.pdf']))
@@ -437,8 +440,14 @@ def get_fit_variables(mst_dem,slv_dem,xxn,pts,pp,xxb=None,mytype='Unknown'):
             
             dH = calculate_dH(mst_dem,slv_dem,pts)
            
+            # Add light filtering (remove outliers, and start/end of xx for edge effects)
+            xxlim= 2000
+            mykeep = (abs(dH)<np.nanstd(dH)*3) & (xx>xxlim) & (xx<np.nanmax(xx)-xxlim) 
+            xx = xx[mykeep]
+            dH = dH[mykeep]            
+            
         # get group statistics of dH, and create matrix with same shape as orig_data
-            grp_sts = get_group_statistics(xx,dH,indist=1000)
+            grp_sts = get_group_statistics(xx,dH,indist=500)
             grp_xx = grp_sts.index.values
             grp_dH = grp_sts.values[:,1]        
         return xx, dH, grp_xx, grp_dH
@@ -466,29 +475,30 @@ def get_fit_variables(mst_dem,slv_dem,xxn,pts,pp,xxb=None,mytype='Unknown'):
             xx2 = XXR2.raster_points(mst_dem.xy,mode='cubic')            
             dH = calculate_dH(mst_dem,slv_dem,pts)
         # get group statistics of dH, and create matrix with same shape as orig_data
-            grp_sts = get_group_statistics(xx1,dH,indist=1000)
+            grp_sts = get_group_statistics(xx1,dH,indist=500)
             grp_xx = grp_sts.index.values
             grp_dH = grp_sts.values[:,1]        
             
         return xx1, xx2, dH, grp_xx, grp_dH
             
 def fitfun_polynomial(xx,params):
-    myval=0
-    for i in np.arange(0,params.size-1):
-        myval = myval + params[i]*(xx**i)
+#    myval=0
+#    for i in np.arange(0,params.size):
+#        myval = myval + params[i]*(xx**i)
         #myval=myval + params[i]*(xx**i) 
-    #return sum([p*(xx**i) for i, p in enumerate(params)])
-    return myval
+    return sum([p*(xx**i) for i, p in enumerate(params)])
+#    return myval
 
 def robust_polynomial_fit(xx,yy):
         
     def errfun(p, xx, yy): return fitfun_polynomial(xx,p) - yy
     
-    mykeep=np.isfinite(yy)
+    #mykeep=np.isfinite(yy) and np.isfinite(xx)
+    mykeep= np.logical_and(np.isfinite(yy),np.isfinite(xx))
     xx=xx[mykeep]
     yy=yy[mykeep]
-    if xx.size > 5000:
-        mysamp = np.random.randint(0, xx.size, 5000)
+    if xx.size > 50000:
+        mysamp = np.random.randint(0, xx.size, 50000)
     else:
         mysamp = np.arange(0, xx.size)
     
@@ -497,25 +507,39 @@ def robust_polynomial_fit(xx,yy):
     plt.plot(xx[mysamp], yy[mysamp], '^', ms=0.5, color='0.5', rasterized=True, fillstyle='full')
 
     
-    myorder=6
+    myorder=3
     mycost=np.empty(myorder)
     coeffs = np.zeros((myorder,myorder+1))
     xnew = np.arange(np.nanmin(xx),np.nanmax(xx),1000)
     
     for deg in np.arange(1,myorder+1):
         
-        p0 = np.ones(deg+1)
-        myresults = optimize.least_squares(errfun, p0, args=(xx[mysamp], yy[mysamp]), method='trf', loss='soft_l1', f_scale=1,ftol=1E-3,xtol=1E-6)    
+        p0 = np.zeros(deg+1)
+        myresults = optimize.least_squares(errfun, p0, args=(xx[mysamp], yy[mysamp]), method='lm', loss='linear', f_scale=0.5,ftol=1E8,xtol=1E-8)    
         print("Status: ",myresults.status)
         mycost[deg-1]=myresults.cost
         coeffs[deg-1,0:myresults.x.size] = myresults.x
         #if xx.size > 5000:
         mypred = fitfun_polynomial(xnew,myresults.x)
         plt.plot(xnew,mypred)
+
         #else:
         #    mypred = fitfun_sumofsin(xx[mysamp],myresults.x)
         #    plt.plot(xx[mysamp],mypred)
-
+    fidx = mycost.argmin() 
+     
+    # This is to check whether percent improvement is a better way to choose the best fit. 
+    # For now, comment out... 
+#    perimp=np.divide(mycost[:-1]-mycost[1:],mycost[:-1])*100
+#    fmin=np.asarray(np.where(perimp>5))
+#    if fmin.size!=0:
+#        fidx = fmin[0,-1]+1
+    # print('fidx: {}'.format(fidx))
+    
+    print("Polynomial Order Selected: ",fidx+1)
+    return coeffs[fidx], mycost[fidx]
+    
+    return 
 
 def polynomial_fit(x,y):
     
@@ -523,7 +547,7 @@ def polynomial_fit(x,y):
     x = x[5:-5]
     y = y[5:-5]     
     
-    max_poly_order=5
+    max_poly_order=6
     
     plt.figure(figsize=(7,5))
     plt.plot(x,y,'.')
@@ -577,16 +601,18 @@ def function_sum_of_sin(xx,yy,lb,ub,pp,ylim=None):
     #fig.suptitle(title, fontsize=14)
     plt.plot(xx, yy, '^', ms=0.5, color='0.5', rasterized=True, fillstyle='full')
     
-    mykeep=np.isfinite(yy)
+    mykeep= np.logical_and(np.isfinite(yy),np.isfinite(xx))
     xx=xx[mykeep]
     yy=yy[mykeep]
-    if xx.size > 5000:
-        mysamp = np.random.randint(0, xx.size, 5000)
+    if xx.size > 50000:
+        mysamp = np.random.randint(0, xx.size, 50000)
     else:
         mysamp = np.arange(0, xx.size)
     
     myorder=3
+    coeffs = np.zeros((myorder,myorder*3))
     mycost=np.zeros(myorder)
+    xxnew = np.arange(np.min(xx[mysamp]),np.max(xx[mysamp]),100)
     for order in np.arange(1,myorder+1):
         print(order)
         myrow=order-1
@@ -597,16 +623,16 @@ def function_sum_of_sin(xx,yy,lb,ub,pp,ylim=None):
         p0 = np.divide(lbb+ubb,2)
         #p1, success, _ = optimize.least_squares(errfun, p0[:], args=([xdata], [ydata]), method='trf', bounds=([lb],[ub]), loss='soft_l1', f_scale=0.1)
         #myresults = optimize.least_squares(errfun, p0, args=(xx[mysamp], yy[mysamp]), method='trf', bounds=([lbb,ubb]), loss='soft_l1', f_scale=1.5)    
-        myresults = optimize.least_squares(errfun, p0, args=(xx[mysamp], yy[mysamp]), method='trf', bounds=([lbb,ubb]), loss='soft_l1', f_scale=1,ftol=1E-3,xtol=1E-6)    
+        myresults = optimize.least_squares(errfun, p0, args=(xx[mysamp], yy[mysamp]), method='trf', bounds=([lbb,ubb]), loss='soft_l1', f_scale=0.1,ftol=1E-6,xtol=1E-6)    
         print("Status: ",myresults.status)
         mycost[myrow]=myresults.cost
-        if xx.size > 5000:
-            xxnew = np.arange(np.min(xx[mysamp]),np.max(xx[mysamp]),100)
-            mypred = fitfun_sumofsin(xxnew,myresults.x)
-            plt.plot(xxnew,mypred)
-        else:
-            mypred = fitfun_sumofsin(xx[mysamp],myresults.x)
-            plt.plot(xx[mysamp],mypred)
+        coeffs[order-1,0:myresults.x.size] = myresults.x
+#        if xx.size > 50000:
+        mypred = fitfun_sumofsin(xxnew,myresults.x)
+        plt.plot(xxnew,mypred)
+#        else:
+#            mypred = fitfun_sumofsin(xx[mysamp],myresults.x)
+#            plt.plot(xx[mysamp],mypred)
     
     fig = plt.figure(figsize=(7, 5), dpi=200)
     plt.plot(np.arange(1,myorder+1),mycost)
@@ -617,17 +643,17 @@ def function_sum_of_sin(xx,yy,lb,ub,pp,ylim=None):
     plt.tight_layout()
     pp.savefig(fig, bbox_inches='tight', dpi=200)
     
-    fidx = mycost.argmin()+1
+    fidx = mycost.argmin()
+    print("Sum of Sines Order Selected: ",fidx+1)
+   
+#    lbb = np.squeeze(np.matlib.repmat(lb,1,fidx))
+#    ubb = np.squeeze(np.matlib.repmat(ub,1,fidx))
+#    p0 = np.divide(lbb+ubb,2)
+#        
+#    #scoef = optimize.least_squares(errfun, p0, args=(xx[mysamp], yy[mysamp]), method='trf', bounds=([lbb,ubb]), loss='soft_l1', f_scale=1.5) 
+#    scoef = optimize.least_squares(errfun, p0, args=(xx[mysamp], yy[mysamp]), method='trf', bounds=([lbb,ubb]), loss='soft_l1', f_scale=1,ftol=1E-3,xtol=1E-6)
     
-    lbb = np.squeeze(np.matlib.repmat(lb,1,fidx))
-    ubb = np.squeeze(np.matlib.repmat(ub,1,fidx))
-    p0 = np.divide(lbb+ubb,2)
-        
-    #scoef = optimize.least_squares(errfun, p0, args=(xx[mysamp], yy[mysamp]), method='trf', bounds=([lbb,ubb]), loss='soft_l1', f_scale=1.5) 
-    scoef = optimize.least_squares(errfun, p0, args=(xx[mysamp], yy[mysamp]), method='trf', bounds=([lbb,ubb]), loss='soft_l1', f_scale=1,ftol=1E-3,xtol=1E-6)
-    print("Sum of Sines Order Selected: ",fidx)
-    
-    return scoef.x, fidx
+    return coeffs[fidx], fidx
 
 
 def fitfun_sumofsin_2angle(xxn,xxb,p): 
@@ -640,7 +666,7 @@ def function_sum_of_sin_2angle(xxn,xxb,yy,lb,ub,pp,ylim=None):
 
     def errfun(p, xxn,xxb, yy): return fitfun_sumofsin_2angle(xxn,xxb,p) - yy
 
-    mykeep=np.isfinite(yy) & (np.abs(yy) < np.nanstd(yy)*3) & ~np.isnan(xxn) & ~np.isnan(xxb) & ~np.isnan(yy)
+    mykeep=np.isfinite(yy) & np.isfinite(xxn) & np.isfinite(xxb) & (np.abs(yy) < np.nanstd(yy)*3)
     xxn=xxn[mykeep]
     xxb=xxb[mykeep]
     yy=yy[mykeep]
@@ -656,7 +682,8 @@ def function_sum_of_sin_2angle(xxn,xxb,yy,lb,ub,pp,ylim=None):
     
     myorder=6
     mycost=np.zeros(myorder)
-    
+    coeffs = np.zeros((myorder,myorder*6))
+
     for order in np.arange(1,myorder+1):
         print(order)
         myrow=order-1
@@ -671,6 +698,8 @@ def function_sum_of_sin_2angle(xxn,xxb,yy,lb,ub,pp,ylim=None):
         myresults = optimize.least_squares(errfun, p0, args=(xxn[mysamp], xxb[mysamp], yy[mysamp]), method='trf', bounds=([lbb,ubb]), loss='huber', f_scale=0.1,ftol=1E-5,xtol=1E-8)    
         print("Status: ",myresults.status)
         mycost[myrow]=myresults.cost
+        coeffs[order-1,0:myresults.x.size] = myresults.x
+
 
         xxn2 = np.linspace(np.min(xxn[mysamp]),np.max(xxn[mysamp]),100)
         xxb2 = np.linspace(np.min(xxb[mysamp]),np.max(xxb[mysamp]),100)
@@ -686,17 +715,17 @@ def function_sum_of_sin_2angle(xxn,xxb,yy,lb,ub,pp,ylim=None):
     plt.tight_layout()
     pp.savefig(fig, bbox_inches='tight', dpi=200)
     
-    fidx = mycost.argmin()+1
+    fidx = mycost.argmin()
+    print("Sum of Sines Order Selected: ",fidx+1)
+
+#    lbb = np.squeeze(np.matlib.repmat(lb,1,fidx))
+#    ubb = np.squeeze(np.matlib.repmat(ub,1,fidx))
+#    p0 = np.divide(lbb+ubb,2)
+#        
+#    #scoef = optimize.least_squares(errfun, p0, args=(xx[mysamp], yy[mysamp]), method='trf', bounds=([lbb,ubb]), loss='soft_l1', f_scale=1.5) 
+#    scoef = optimize.least_squares(errfun, p0, args=(xxn[mysamp],xxb[mysamp], yy[mysamp]), method='trf', bounds=([lbb,ubb]), loss='huber', f_scale=0.1,ftol=1E-5,xtol=1E-8)
     
-    lbb = np.squeeze(np.matlib.repmat(lb,1,fidx))
-    ubb = np.squeeze(np.matlib.repmat(ub,1,fidx))
-    p0 = np.divide(lbb+ubb,2)
-        
-    #scoef = optimize.least_squares(errfun, p0, args=(xx[mysamp], yy[mysamp]), method='trf', bounds=([lbb,ubb]), loss='soft_l1', f_scale=1.5) 
-    scoef = optimize.least_squares(errfun, p0, args=(xxn[mysamp],xxb[mysamp], yy[mysamp]), method='trf', bounds=([lbb,ubb]), loss='huber', f_scale=0.1,ftol=1E-5,xtol=1E-8)
-    print("Sum of Sines Order Selected: ",fidx)
-    
-    return scoef.x, fidx
+    return coeffs[fidx], fidx
     
 
 
@@ -762,28 +791,34 @@ def correct_cross_track_bias(mst_dem,slv_dem,inang,pp,pts=False):
     # Need conditional to check for large enough sample size... ?
     # #
     
-    # POLYNOMIAL FITTING
-    pcoef, _ = polynomial_fit(grp_xx,grp_dH) #mean
-    #pcoef2, _ = polynomial_fit(xx,dH) # USE ALL DATA
+    # POLYNOMIAL FITTING - here using my defined robust polynomial fitting
+    pcoef, _ = robust_polynomial_fit(xx,dH)
+    polymod=fitfun_polynomial(xx,pcoef)
+    polymod_grp=fitfun_polynomial(grp_xx,pcoef)
+    polyres=RMSE(dH-polymod)
+    print("Cross track Polynomial RMSE (all data): ", polyres)
 
-    polymod=poly.polyval(grp_xx,pcoef)
-    polyres=RMSE(grp_dH-polymod)
-    print("Cross track Polynomial RMSE (grouped data): ", polyres)
+#   # USING POLYFIT With GROUPED data
+#    pcoef, _ = polynomial_fit(grp_xx,grp_dH) #mean
+    #pcoef2, _ = polynomial_fit(xx,dH) # USE ALL DATA
+#    polymod=poly.polyval(grp_xx,pcoef)
+#    polyres=RMSE(grp_dH-polymod)
+#    print("Cross track Polynomial RMSE (grouped data): ", polyres)
     
     #if pts: 
     #    pcoef2, _ = polynomial_fit(xx,dH)
     #    polymod=poly.polyval(grp_xx,pcoef2)
     #    polyres=RMSE(grp_dH-polymod)
     #    print("Cross track Polynomial RMSE (raw data): ", polyres)
-    plot_bias(xx,dH,grp_xx,grp_dH,'Cross',pp,pmod=polymod)
+    plot_bias(xx,dH,grp_xx,grp_dH,'Cross',pp,pmod=polymod_grp)
     
     # Generate correction for DEM
     out_corr = poly.polyval(xxr,pcoef)
     
     # Correct DEM
-    zupdate = np.ma.array(slv_dem.img + out_corr, mask=slv_dem.mask)  # shift in z
+    zupdate = np.ma.array(slv_dem.img + out_corr, mask=slv_dem.img.mask)  # shift in z
     slv_dem = slv_dem.copy(new_raster=zupdate)
-    
+    print(type(slv_dem.img))
     dH1 = calculate_dH(mst_dem,slv_dem,pts)
     if not pts:
         final_histogram(dH0.img,dH1.img,pp)
@@ -807,27 +842,37 @@ def correct_along_track_bias(mst_dem,slv_dem,inang,pp,pts):
     # ALSO, filters the dH > threshold (40), and provides grouped statistics... 
     xx, dH, grp_xx, grp_dH = get_fit_variables(mst_dem,slv_dem,yyr,pts,pp,mytype='Along')
     
-    # POLYNOMIAL FITTING
-    pcoef, _ = polynomial_fit(grp_xx,grp_dH) #mean
-    #pcoef2, _ = polynomial_fit(xx,dH) # USE ALL DATA
-    polymod=poly.polyval(grp_xx,pcoef)
-    polyres=RMSE(grp_dH-polymod)
-    print("Along track Polynomial RMSE (grouped data): ", polyres)
+    # POLYNOMIAL FITTING - here using my defined robust polynomial fitting
+    pcoef, _ = robust_polynomial_fit(xx,dH)
+    polymod=fitfun_polynomial(xx,pcoef)
+    polymod_grp=fitfun_polynomial(grp_xx,pcoef)
+    polyres=RMSE(dH-polymod)
+    print("Along track Polynomial RMSE (all data): ", polyres)
+
+#   # USING POLYFIT With GROUPED data
+#    pcoef, _ = polynomial_fit(grp_xx,grp_dH) #mean
+#    #pcoef2, _ = polynomial_fit(xx,dH) # USE ALL DATA
+#    polymod=poly.polyval(grp_xx,pcoef)
+#    polyres=RMSE(grp_dH-polymod)
+#    print("Along track Polynomial RMSE (grouped data): ", polyres)
 
     # SUM OF SINES
     # First define the bounds of the three sine wave coefficients to solve
     lb = np.asarray([3, np.divide(2*np.pi,80000), -np.pi])
     ub = [20, np.divide(2*np.pi,20000), np.pi]
     scoef, _ = function_sum_of_sin(grp_xx,grp_dH,lb,ub,pp)
-    sinmod = fitfun_sumofsin(grp_xx,scoef) 
+    sinmod = fitfun_sumofsin(xx,scoef) 
+    sinmod_grp = fitfun_sumofsin(grp_xx,scoef) 
     #embed()
-    sinres = RMSE(grp_dH-sinmod)
-    print("Along track Sum_of_Sin RMSE: ", sinres)
+    sinres = RMSE(dH-sinmod)
+    sinres_grp = RMSE(grp_dH-sinmod_grp)
+    print("Along track Sum_of_Sin RMSE (grouped): ", sinres_grp)
+    print("Along track Sum_of_Sin RMSE (all data): ", sinres)
     
-    plot_bias(xx,dH,grp_xx,grp_dH,'Along',pp,pmod=polymod,smod=sinmod)
+    plot_bias(xx,dH,grp_xx,grp_dH,'Along',pp,pmod=polymod_grp,smod=sinmod_grp)
    
     # ADD CONDITIONAL FOR CHOOSING WHICH FIT
-    out_corr = poly.polyval(xx,pcoef)
+    out_corr = fitfun_polynomial(xx,pcoef)
     out_corr2 = fitfun_sumofsin(xx,scoef)
     
     if not pts:
@@ -840,8 +885,10 @@ def correct_along_track_bias(mst_dem,slv_dem,inang,pp,pts):
         mycorr = fitfun_sumofsin(yyr,scoef)
     elif polyres<sinres:
         mycorr = poly.polyval(yyr,pcoef)
-    
-    zupdate = np.ma.array(slv_dem.img + mycorr, mask=slv_dem.mask)  # shift in z
+        
+#    NEVER GOT TH EMASK THING WORKING... 
+#    zupdate = np.ma.array(slv_dem.img + mycorr, mask=slv_dem.img.mask)  # shift in z
+    zupdate = np.ma.array(slv_dem.img + mycorr)  # shift in z
     slv_dem = slv_dem.copy(new_raster=zupdate)
     
     dH1 = calculate_dH(mst_dem,slv_dem,pts)
@@ -928,7 +975,7 @@ def correct_along_track_jitter2(mst_dem,slv_dem,inangN,inangB,pp,pts):
     # SUM OF SINES
     # First define the bounds of the three sine wave coefficients to solve
     lb = np.asarray([1, np.divide(2*np.pi,4800), -np.pi, 1, np.divide(2*np.pi,4800), -np.pi])
-    ub = [3.5, np.divide(2*np.pi,3800), np.pi, 3.5, np.divide(2*np.pi,3800), np.pi]
+    ub = [6, np.divide(2*np.pi,3800), np.pi, 6, np.divide(2*np.pi,3800), np.pi]
     
 #    xxn_vec = np.reshape(xxn,(xxn.size,1))
 #    xxb_vec = np.reshape(xxb,(xxb.size,1))
@@ -965,11 +1012,14 @@ def correct_along_track_jitter2(mst_dem,slv_dem,inangN,inangB,pp,pts):
     #res1 = RMSE(orig_data[:,1]-out_corr)
     #print("ALL Pixels Sum_of_Sin RMSE:", res1)
     
-    zupdate = np.ma.array(slv_dem.img + out_corr, mask=slv_dem.mask)  # shift in z
+    #    NEVER GOT TH EMASK THING WORKING... 
+#    zupdate = np.ma.array(slv_dem.img + out_corr, mask=slv_dem.img.mask)  # shift in z
+    zupdate = np.ma.array(slv_dem.img + out_corr)  # shift in z
     slv_dem = slv_dem.copy(new_raster=zupdate)
 
     dH1 = calculate_dH(mst_dem,slv_dem,pts)
     if not pts:
+        false_hillshade(dH1,'Post-Jitter Removal',pp)
         final_histogram(dH0.img,dH1.img,pp)
     elif pts:
         final_histogram(dH0,dH1,pp)
@@ -977,7 +1027,7 @@ def correct_along_track_jitter2(mst_dem,slv_dem,inangN,inangB,pp,pts):
     return slv_dem, out_corr
 
 # the big kahuna
-def mmaster_bias_removal(mst_dem,slv_dem,glac_mask=None,land_mask=None,cwd='.',pts=False):
+def mmaster_bias_removal(mst_dem,slv_dem,glac_mask=None,land_mask=None,cwd='.',pts=False,out_dir='.'):
     
     
     # import angle data
@@ -988,34 +1038,43 @@ def mmaster_bias_removal(mst_dem,slv_dem,glac_mask=None,land_mask=None,cwd='.',p
     ang_mapNB = ang_mapN.copy(new_raster=zupdate)
       
     # pre-processing steps
-    mst_coreg, slv_coreg, shift_params = preprocess(mst_dem, slv_dem,pts=pts)
+    mst_coreg, slv_coreg, shift_params = preprocess(mst_dem, slv_dem,pts=pts,cwd=cwd)
     
     # create the output pdf
-    pp = PdfPages('BiasCorrections_Results.pdf')
+    pp = PdfPages(os.path.sep.join([out_dir, 'BiasCorrections_Results.pdf']))
     
     # cross-track bias removal 
     # - assumes both dems include only stabile terrain. 
     # - Errors permitted as we will filter along the way
     slv_coreg_xcorr, xcorr = correct_cross_track_bias(mst_coreg,slv_coreg,ang_mapN,pp,pts=pts)
     outname=os.path.splitext(slv_dem)[0] + "_adj_X.tif"
-    slv_coreg_xcorr.write(outname,out_folder=cwd)
+    slv_coreg_xcorr.write(outname,out_folder=out_dir)
     plt.close("all")
 
     # along-track bias removal
     slv_coreg_xcorr_acorr, acorr = correct_along_track_bias(mst_coreg,slv_coreg_xcorr,ang_mapNB,pp,pts=pts)
     outname=os.path.splitext(slv_dem)[0] + "_adj_XA.tif"
-    slv_coreg_xcorr_acorr.write(outname,out_folder=cwd)
+    slv_coreg_xcorr_acorr.write(outname,out_folder=out_dir)
     plt.close("all")
 
     # along-track jitter removal
     #slv_coreg_xcorr_acorr_jcorr, jcorr = correct_along_track_jitter(mst_coreg,slv_coreg_xcorr_acorr,ang_mapNB,pp)
     slv_coreg_xcorr_acorr_jcorr, jcorr = correct_along_track_jitter2(mst_coreg,slv_coreg_xcorr_acorr,ang_mapN,ang_mapB,pp,pts=pts)
     outname=os.path.splitext(slv_dem)[0] + "_adj_XAJ.tif"
-    slv_coreg_xcorr_acorr_jcorr.write(outname,out_folder=cwd)
+    slv_coreg_xcorr_acorr_jcorr.write(outname,out_folder=out_dir)
     plt.close("all")
 
+    # EXPERIMENTAL along-track jitter removal - 2nd iteration
+    #slv_coreg_xcorr_acorr_jcorr, jcorr = correct_along_track_jitter(mst_coreg,slv_coreg_xcorr_acorr,ang_mapNB,pp)
+    slv_coreg_xcorr_acorr_jcorr2, jcorr2 = correct_along_track_jitter2(mst_coreg,slv_coreg_xcorr_acorr_jcorr,ang_mapN,ang_mapB,pp,pts=pts)
+    outname=os.path.splitext(slv_dem)[0] + "_adj_XAJJ.tif"
+    slv_coreg_xcorr_acorr_jcorr2.write(outname,out_folder=out_dir)
+    plt.close("all")
+
+
+
     dH0 = calculate_dH(mst_coreg,slv_coreg,pts)
-    dH_final = calculate_dH(mst_coreg,slv_coreg_xcorr_acorr_jcorr,pts)
+    dH_final = calculate_dH(mst_coreg,slv_coreg_xcorr_acorr_jcorr2,pts)
 
     if not pts:
         # Calculate initial differences
@@ -1033,12 +1092,12 @@ def mmaster_bias_removal(mst_dem,slv_dem,glac_mask=None,land_mask=None,cwd='.',p
         
 #
     # re-coregister
-    recoreg_outdir = os.path.sep.join([cwd,'re-coreg'])
+    recoreg_outdir = os.path.sep.join([out_dir,'re-coreg'])
     if not pts: 
-        mst_coreg, slv_adj_coreg, shift_params2 = dem_coregistration(mst_coreg, slv_coreg_xcorr_acorr_jcorr, glaciermask=glac_mask, 
+        mst_coreg, slv_adj_coreg, shift_params2 = dem_coregistration(mst_coreg, slv_coreg_xcorr_acorr_jcorr2, glaciermask=glac_mask, 
                                                                      landmask=land_mask, outdir=recoreg_outdir,pts=pts)
     elif pts:
-        mst_coreg, slv_adj_coreg, shift_params2 = dem_coregistration(mst_dem, slv_coreg_xcorr_acorr_jcorr, glaciermask=glac_mask, 
+        mst_coreg, slv_adj_coreg, shift_params2 = dem_coregistration(mst_dem, slv_coreg_xcorr_acorr_jcorr2, glaciermask=glac_mask, 
                                                                      landmask=land_mask, outdir=recoreg_outdir,pts=pts)
         
     plt.close("all")
