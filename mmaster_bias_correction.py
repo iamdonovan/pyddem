@@ -48,9 +48,9 @@ def main():
 
         mst_coreg, slv_coreg_xcorr_acorr_jcorr = mmaster_bias_removal(args.masterdem,
                                                                       args.slavedem,
-                                                                      glac_mask=args.exc_mask,
-                                                                      land_mask=args.inc_mask,
-                                                                      cwd=args.outdir,
+                                                                      glacmask=args.exc_mask,
+                                                                      landmask=args.inc_mask,
+                                                                      out_dir=args.outdir,
                                                                       pts=args.points)
     else:
         print('not implemented yet!')
