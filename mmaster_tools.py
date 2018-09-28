@@ -1031,8 +1031,8 @@ def correct_along_track_jitter(mst_dem, slv_dem, inangN, inangB, pp, pts):
 # the big kahuna
 def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None, pts=False, out_dir='.'):
     # import angle data
-    ang_mapN = GeoImg('TrackAngleMap_N.tif')
-    ang_mapB = GeoImg('TrackAngleMap_B.tif')
+    ang_mapN = GeoImg('TrackAngleMap_3N.tif')
+    ang_mapB = GeoImg('TrackAngleMap_3B.tif')
     # temporary kludge to get the thing working, before we get the NB angle from Luc's update
     ang_NB = np.array(np.divide(ang_mapN.img + ang_mapB.img, 2))  # shift in z
     ang_mapNB = ang_mapN.copy(new_raster=ang_NB)
@@ -1097,6 +1097,7 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None, pts=Fal
 
     #
     # re-coregister
+    print("Re-co-registering DEMs.")
     recoreg_outdir = os.path.sep.join([out_dir, 're-coreg'])
     if not pts:
         mst_coreg, slv_adj_coreg, shift_params2 = dem_coregistration(mst_coreg, slv_coreg_xcorr_acorr_jcorr2,
