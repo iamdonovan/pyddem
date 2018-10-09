@@ -330,9 +330,9 @@ def preprocess(mst_dem, slv_dem, glacmask=None, landmask=None, cwd='.', pts=Fals
 
 
 def mask_raster_threshold(rasname, maskname, outfilename, threshold=50, datatype=np.float32):
-    '''
+    """
     filters values in rasname if maskname is less then threshold
-    '''
+    """
     myras = GeoImg(rasname)
     mymask = GeoImg(maskname)
 
@@ -626,8 +626,10 @@ def function_sum_of_sin(xx, yy, lb, ub, pp, ylim=None):
         lbb = np.squeeze(np.matlib.repmat(lb, 1, order))
         ubb = np.squeeze(np.matlib.repmat(ub, 1, order))
         p0 = np.divide(lbb + ubb, 2)
-        # p1, success, _ = optimize.least_squares(errfun, p0[:], args=([xdata], [ydata]), method='trf', bounds=([lb],[ub]), loss='soft_l1', f_scale=0.1)
-        # myresults = optimize.least_squares(errfun, p0, args=(xx[mysamp], yy[mysamp]), method='trf', bounds=([lbb,ubb]), loss='soft_l1', f_scale=1.5)
+        # p1, success, _ = optimize.least_squares(errfun, p0[:], args=([xdata], [ydata]),
+        #  method='trf', bounds=([lb],[ub]), loss='soft_l1', f_scale=0.1)
+        # myresults = optimize.least_squares(errfun, p0, args=(xx[mysamp], yy[mysamp]),
+        #  method='trf', bounds=([lbb,ubb]), loss='soft_l1', f_scale=1.5)
         myresults = optimize.least_squares(errfun, p0, args=(xx[mysamp], yy[mysamp]), method='trf', bounds=([lbb, ubb]),
                                            loss='soft_l1', f_scale=0.2, ftol=1E-6, xtol=1E-6)
         print("Status: ", myresults.status)
@@ -1097,7 +1099,7 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None, pts=Fal
 
     #
     # re-coregister
-    print("Re-co-registering DEMs.")
+    print('Re-co-registering DEMs.')
     recoreg_outdir = os.path.sep.join([out_dir, 're-coreg'])
     if not pts:
         mst_coreg, slv_adj_coreg, shift_params2 = dem_coregistration(mst_coreg, slv_coreg_xcorr_acorr_jcorr2,
