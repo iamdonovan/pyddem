@@ -1175,56 +1175,6 @@ def correct_along_track_bias(mst_dem, slv_dem, inang, pp, pts):
     return slv_dem, mycorr, scoef
 
 
-# def correct_along_track_jitter(mst_dem, slv_dem, inang, pp):
-#     # calculate along/across track coordinates
-#     # myang = np.deg2rad(np.multiply(inang,np.multiply(dH,0)+1))# generate synthetic angle image for testing
-#     myang = np.deg2rad(inang.img)
-#     xxr, yyr = get_xy_rot(mst_dem, myang)  # across,along track coordinates calculated from angle map
-#
-#     mytype = 'Along'
-#     mytitle = 'Pre ' + mytype + '-track jitter corrections'
-#     dH = calculate_dH(mst_dem, slv_dem)
-#     false_hillshade(dH, mytitle, pp)
-#     # #
-#     # Need conditional to check for enough sample size...
-#     # #
-#
-#     # define original data with shape (:,2)
-#     orig_data = np.concatenate((yyr.reshape((yyr.size, 1)), dH.img.reshape((dH.img.size, 1))), 1)
-#
-#     # get group statistics of dH, and create matrix with same shape as orig_data
-#     yygrp = get_group_statistics(orig_data[:, 0], orig_data[:, 1], indist=200)
-#     grp_data = np.concatenate(
-#         (yygrp.index.values.reshape((yygrp.index.size, 1)), yygrp.values[:, 5].reshape((yygrp.values[:, 1].size, 1))),
-#         1)
-#
-#     # SUM OF SINES
-#     # First define the bounds of the three sine wave coefficients to solve
-#     lb = np.asarray([1, np.divide(2 * np.pi, 4800), -np.pi])
-#     ub = [3.5, np.divide(2 * np.pi, 3800), np.pi]
-#     scoef, _ = function_sum_of_sin(grp_data[:, 0], grp_data[:, 1], lb, ub, pp, ylim=300)
-#     sinmod = fitfun_sumofsin(grp_data[:, 0], scoef)
-#     # embed()
-#     sinres = RMSE(grp_data[:, 1] - sinmod)
-#     print("Along track Sum_of_Sin RMSE: ", sinres)
-#
-#     # plot_bias(orig_data,grp_data,mytype,pp)
-#     plot_bias(xx, dH, grp_xx, grp_dH, mytype, pp, smod=sinmod, plotmin=1)
-#
-#     out_corr = fitfun_sumofsin(yyr, scoef)
-#
-#     res1 = RMSE(dH.img - out_corr)
-#     print("ALL Pixels Sum_of_Sin RMSE:", res1)
-#
-#     zupdate = np.ma.array(slv_dem.img + out_corr, mask=slv_dem.img.mask)  # shift in z
-#     slv_dem = slv_dem.copy(new_raster=zupdate)
-#
-#     dH1 = calculate_dH(mst_dem, slv_dem)
-#     final_histogram(dH.img, dH1.img, pp)
-#
-#     return slv_dem, out_corr
-
-
 def correct_along_track_jitter(mst_dem, slv_dem, inangN, inangB, pp, pts):
     
     # calculate along/across track coordinates
