@@ -391,23 +391,7 @@ def calculate_dH(mst_dem, slv_dem, pts):
         elif slave_mask:
             dH.mask(slv_dem.img.mask)
         
-#        dH2.mask(dH.img.mask)           
 
- 
-        
-#        zupdate = np.ma.array(mst_dem.img.data - slv_dem.img, mask=slv_dem.img.mask)
-##        dH = slv_dem.copy(new_raster=zupdate)
-#        zupdate2 = np.ma.array(ndimage.median_filter(zupdate, 7), mask=slv_dem.img.mask)
-#        dH2 = slv_dem.copy(new_raster=zupdate2)
-#        # dH = master.copy(new_raster = (master.img-slave.img))
-        
-#        mykeep = ((np.absolute(dH.img) < 200.0) & np.isfinite(dH.img) &
-#                  (slope > 7.0) & (dH.img != 0.0) & (aspect >= 0))
-#        dH.img[np.invert(mykeep)] = np.nan
-
-#        plt.figure(figsize=(5, 5))
-#        plt.imshow(dH.img, interpolation='nearest', cmap='gray')
-#        plt.show()
     elif pts:
         # NEED TO CHECK THE MASKING
         slave_pts = slv_dem.raster_points(mst_dem.xy, mode='quintic')
