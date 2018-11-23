@@ -147,6 +147,7 @@ for dir in ${subList[@]}; do
 		rm -v tmp_msk.tif tmp_geo.tif
 		rm -v $dir\_Z.tif $dir\_CORR.tif
 		cd ../
+
 		if [ -d "Ortho-MEC-Malt" ]; then 			
 			cd Ortho-MEC-Malt			
 			gdal_calc.py -B tmp_mskDouble.tif -A tmp_V123.tif --outfile=$dir\_V123.tif --calc="((A!=255)*(A+1)+(A==255)*A)*(B>0)" --NoDataValue=0 --allBands=A
@@ -157,6 +158,7 @@ for dir in ${subList[@]}; do
 			cd ../
 		fi
 		cp -v TrackAngleMap*.tif $outdir/$datestr/
+		cp -v ./zips/*.zip.met $outdir/$datestr/
 	else
 		echo "No directory MEC-Malt found in $dir. Exiting."
 	fi
