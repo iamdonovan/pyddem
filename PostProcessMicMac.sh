@@ -158,7 +158,8 @@ for dir in ${subList[@]}; do
 			cd ../
 		fi
 		cp -v TrackAngleMap*.tif $outdir/$datestr/
-		cp -v ./zips/*.zip.met $outdir/$datestr/
+		#cp -v ./zips/*.zip.met $outdir/$datestr/
+		find . -name '*.zip.met' -exec cp {} $outdir/$datestr/ \;
 	else
 		echo "No directory MEC-Malt found in $dir. Exiting."
 	fi
