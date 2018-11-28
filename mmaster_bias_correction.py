@@ -30,7 +30,7 @@ def main():
                         help='inclusion mask. Areas outside of this mask (i.e., water)\
                              will not be used for coregistration. [None]')
     parser.add_argument('-n', '--nproc', type=int, default=1, help='number of processors to use [1].')
-    parser.add_argument('-o', '--outdir', type=str, default='.',
+    parser.add_argument('-o', '--outdir', type=str, default='biasrem',
                         help='directory to output files to (creates if not already present). [.]')
     parser.add_argument('-p', '--points', action='store_true', default=False,
                         help="process assuming that master DEM is point elevations [False].")
@@ -42,6 +42,7 @@ def main():
         args.indir = args.indir[0]
         print('Running bias correction on {}'.format(args.indir))
         os.chdir(args.indir)
+        print(os.getcwd())
         if args.slavedem is None:
             flist = glob('AST*_Z.tif')
             args.slavedem = flist[0]

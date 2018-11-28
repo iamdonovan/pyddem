@@ -2,7 +2,6 @@ from __future__ import print_function
 from future_builtins import zip
 from functools import partial
 import os
-import shutil
 from glob import glob
 import errno
 import pyproj
@@ -15,6 +14,8 @@ import fiona.crs
 import matplotlib.pylab as plt
 import pandas as pd
 import scipy.optimize as optimize
+from skimage.morphology import disk
+from scipy.ndimage.morphology import binary_opening
 from matplotlib.backends.backend_pdf import PdfPages
 from shapely.geometry.polygon import Polygon, orient
 from shapely.geometry import mapping, LineString, Point
@@ -268,7 +269,7 @@ def get_track_angle(fprint, track_dist):
     return 90 + np.rad2deg(np.arctan(dx / dy))
 
 
-def preprocess(mst_dem, slv_dem, glacmask=None, landmask=None, cwd='.',out_dir='.', pts=False):
+def preprocess(mst_dem, slv_dem, glacmask=None, landmask=None, work_dir='.', out_dir='biasrem', pts=False):
     """
     Pre-process ASTER scene to enable cross- and along-track corrections. Co-registers the
     ASTER (slave) and external (master) DEMs/ICESat, and shifts the orthoimage and correlation mask
@@ -300,18 +301,27 @@ def preprocess(mst_dem, slv_dem, glacmask=None, landmask=None, cwd='.',out_dir='
     shift_params : tuple
         Tuple containing x, y, and z shifts calculated during co-regisration process.
     """
-
+    # if the output directory does not exist, create it.
+    #out_dir = os.path.sep.join([work_dir, out_dir])
+    #print(out_dir)
+    try:
+        os.makedirs(out_dir)
+    except OSError as exc:  # Python >2.5
+        if exc.errno == errno.EEXIST and os.path.isdir(out_dir):
+            pass
+        else:
+            raise
     # Get the ASTER names
     ast_name = slv_dem.rsplit('_Z.tif')[0]
-    mask_name = os.path.sep.join([cwd, '{}_CORR.tif'.format(ast_name)])
-    slv_name = os.path.sep.join([cwd, '{}_filtZ.tif'.format(ast_name)])
+    mask_name = os.path.sep.join([work_dir, '{}_CORR.tif'.format(ast_name)])
+    slv_name = os.path.sep.join([work_dir, '{}_filtZ.tif'.format(ast_name)])
     # filter DEM using correlation mask !!! NEED to update to allow for either GeoIMG or pathname as INPUT
     mask_raster_threshold(slv_dem, mask_name, slv_name, 60, np.float32)
 
     # co-register master, slave
-    out_dir2 = os.path.sep.join([cwd, 'coreg'])
+    coreg_dir = os.path.sep.join([out_dir, 'coreg'])
     mst_coreg, slv_coreg, shift_params = dem_coregistration(mst_dem, slv_name, glaciermask=glacmask,
-                                                            landmask=landmask, outdir=out_dir2, pts=pts)
+                                                            landmask=landmask, outdir=coreg_dir, pts=pts)
 #    print(slv_coreg.filename)
     # remove coreg folder, save slv as *Zadj1.tif, but save output.pdf
 #    shutil.move(os.path.sep.join([out_dir, 'CoRegistration_Results.pdf']),
@@ -321,19 +331,17 @@ def preprocess(mst_dem, slv_dem, glacmask=None, landmask=None, cwd='.',out_dir='
     
     ### EXPORT and write files. Move directory to main Bias Corrections directory
     ### *** NOTE: GeoImg.write replaces the mask !!!***
-    slv_coreg.write(os.path.sep.join([out_dir2, '{}_Z_adj.tif'.format(ast_name)]))
+    slv_coreg.write(os.path.sep.join([out_dir, '{}_Z_adj.tif'.format(ast_name)]))
     # shift ortho, corr masks, save as *adj1.tif
     ortho = GeoImg(ast_name + '_V123.tif')
     corr = GeoImg(ast_name + '_CORR.tif')
 
     ortho.shift(shift_params[0], shift_params[1])
-    ortho.write(os.path.sep.join([out_dir2, '{}_V123_adj.tif'.format(ast_name)]))
+    ortho.write(os.path.sep.join([out_dir, '{}_V123_adj.tif'.format(ast_name)]))
 
     corr.shift(shift_params[0], shift_params[1])
-    corr.write(os.path.sep.join([out_dir2, '{}_CORR_adj.tif'.format(ast_name)]), dtype=np.uint8)
+    corr.write(os.path.sep.join([out_dir, '{}_CORR_adj.tif'.format(ast_name)]), dtype=np.uint8)
 
-    # Move coreg folder to output directory
-    shutil.move(out_dir2, out_dir)
     plt.close("all")
 
     return mst_coreg, slv_coreg, shift_params
@@ -345,9 +353,10 @@ def mask_raster_threshold(rasname, maskname, outfilename, threshold=50, datatype
     """
     myras = GeoImg(rasname)
     mymask = GeoImg(maskname)
-
     rem = mymask.img < threshold
-    myras.img[rem] = np.nan
+    
+    rem_open = binary_opening(rem, structure=disk(5))
+    myras.img[rem_open] = np.nan
     myras.write(outfilename, driver='GTiff', dtype=datatype)
 
     return myras
@@ -724,7 +733,7 @@ def plot_bias(xx, dH, grp_xx, grp_dH, title, pp, pmod=None, smod=None, plotmin=N
     mykeep = np.isfinite(dH)
     xx = xx[mykeep]
     dH = dH[mykeep]
-    sampsize=50000
+    sampsize=25000
     if xx.size > sampsize:
         mysamp = np.random.randint(0, xx.size, sampsize)
     else:
@@ -968,7 +977,8 @@ def correct_along_track_bias(mst_dem, slv_dem, inangN, inangB, pp, pts):
 
 ################################################################################################
 # the big kahuna
-def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None, pts=False, out_dir='.'):
+def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
+                         pts=False, work_dir='.', out_dir='biasrem'):
     """
     Removes cross track and along track biases from MMASTER DEMs. 
 
@@ -993,7 +1003,7 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None, pts=Fal
     """
 
     # if the output directory does not exist, create it.
-    out_dir = os.path.abspath(out_dir)
+    # out_dir = os.path.sep.join([work_dir, out_dir])
     try:
         os.makedirs(out_dir)
     except OSError as exc:  # Python >2.5
@@ -1001,7 +1011,6 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None, pts=Fal
             pass
         else:
             raise
-    print(out_dir)
 
     # import angle data
     ang_mapN = GeoImg('TrackAngleMap_3N.tif')
@@ -1010,7 +1019,7 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None, pts=Fal
 
     # pre-processing steps (co-registration,Correlation_masking)
     mst_coreg, slv_coreg, shift_params = preprocess(mst_dem, slv_dem, glacmask=glacmask, landmask=landmask,
-                                                    cwd='.', out_dir=out_dir, pts=pts)
+                                                    work_dir='.', out_dir=out_dir, pts=pts)
 
     # OPEN and start the Results.pdf
     pp = PdfPages(os.path.sep.join([out_dir, 'BiasCorrections_Results.pdf']))
