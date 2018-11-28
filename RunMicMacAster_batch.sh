@@ -13,11 +13,12 @@ ZoomF=1 #this has to be passed to PostProcessMicMac, and WorkFlowPt2
 RESTERR=30
 do_ply=false #default no ply point cloud generation
 do_angle=false
+do_strip=false
 fitVersion=1
 
 # figure out what options we were passed: 
 #":hz:wnc:f:t:pr" 
-while getopts "z:c:q:w:nf:t:yai:prh" opt; do
+while getopts "z:c:q:w:nf:t:yadi:prh" opt; do
   case $opt in
     h)
       echo "Run the MicMac-based ASTER DEM pipeline from start to finish."
@@ -32,7 +33,8 @@ while getopts "z:c:q:w:nf:t:yai:prh" opt; do
       echo "    -t RESTERR    : Run with different terrain resolution (optional; default: 30)"
       echo "    -y do_ply     : Write point cloud (DEM drapped with ortho in ply)"
       echo "    -a do_angle   : Compute track angle along orbit"
-      echo "    -i fitVersion : Version of Cross-track FitASTER to be used (Def 1, 2 availiable)"
+	  echo "    -d do_strip   : Compute for strips of more than 1 scene (default: false)"
+      echo "    -i fitVersion : Version of Cross-track FitASTER to be used (Def 1, 2 available)"
       echo "    -p  	      : Purge results and run fresh from .zip files."
       echo "    -r  	      : Re-process, but don't purge everything."
       echo "    -h  	      : displays this message and exits."
@@ -71,6 +73,10 @@ while getopts "z:c:q:w:nf:t:yai:prh" opt; do
 	  echo "Orbit angles will be exported"
       do_angle=true
       ;; 
+	d)
+	  echo "Aster strips will be processed"
+      do_strip=true
+      ;;   
     f)
       ZoomF=$OPTARG
       echo "ZoomF set to $ZoomF"
@@ -135,17 +141,28 @@ here=$(pwd)
 
 #Sorting the zip and met files into individual folders
 if [ $run_again -eq 1 ]; then
-	find ./ -maxdepth 1 -name "*.zip" | while read filename; do
-	    f=$(basename "$filename")
-	    f1=${f%.*}
-	    mkdir -p "$f1" "$f1/RawData"
-	    unzip $f -d "$f1/RawData"
-	    mv "$f" "$f1"
-	    echo "start=\$SECONDS" >> ProcessAll.sh
-	    echo "WorkFlowASTER_onescene.sh -c " $CorThr " -q " $SzW " -s " $f1 " -z \""$UTMZone"\" -w " $nameWaterMask " -f " $ZoomF " -t " $RESTERR " -n " $NoCorDEM  " -y " $do_ply " -a " $do_angle " -i " $fitVersion >> ProcessAll.sh
-	    echo "duration=\$(( SECONDS - start ))" >> ProcessAll.sh
-	    echo "echo Procesing of " $f1 " took \" \$duration \" s to process >> Timings.txt" >> ProcessAll.sh
-	done  
+	if [ "$do_strip" = false ]; then
+		find ./ -maxdepth 1 -name "*.zip" | while read filename; do
+			f=$(basename "$filename")
+			f1=${f%.*}
+			mkdir -p "$f1" "$f1/RawData"
+			unzip $f -d "$f1/RawData"
+			mv "$f" "$f1"
+			echo "start=\$SECONDS" >> ProcessAll.sh
+			echo "WorkFlowASTER_onescene.sh -c " $CorThr " -q " $SzW " -s " $f1 " -z \""$UTMZone"\" -w " $nameWaterMask " -f " $ZoomF " -t " $RESTERR " -n " $NoCorDEM  " -y " $do_ply " -a " $do_angle " -i " $fitVersion >> ProcessAll.sh
+			echo "duration=\$(( SECONDS - start ))" >> ProcessAll.sh
+			echo "echo Procesing of " $f1 " took \" \$duration \" s to process >> Timings.txt" >> ProcessAll.sh
+		done  
+	else
+		find ./ -maxdepth 1 -name "AST_*" | while read filename; do
+			f1=${filename:2}
+			echo $f1
+			echo "start=\$SECONDS" >> ProcessAll.sh
+			echo "WorkFlowASTER_onestrip.sh -c " $CorThr " -q " $SzW " -s " $f1 " -z \""$UTMZone"\" -w " $nameWaterMask " -f " $ZoomF " -t " $RESTERR " -n " $NoCorDEM  " -y " $do_ply " -a " $do_angle " -i " $fitVersion >> ProcessAll.sh
+			echo "duration=\$(( SECONDS - start ))" >> ProcessAll.sh
+			echo "echo Procesing of " $f1 " took \" \$duration \" s to process >> Timings.txt" >> ProcessAll.sh
+		done
+	fi
 
 	echo "Moved and extracted zip files"
 
