@@ -495,19 +495,22 @@ def get_fit_variables(mst_dem, slv_dem, xxn, pts, xxb=None):
     prepare input variables for fitting. 
     """
   
+    slv_dem.img[slv_dem.img.mask==1] = np.nan
     if not pts:
         dHmat = calculate_dH(mst_dem, slv_dem, pts)
-
+        
+        #dHmat[slv_dem.img.mask==1] = np.nan
         xx = xxn.reshape((1, xxn.size))
         dH = dHmat.img.reshape((1, dHmat.img.size))
         
         if xxb is not None:
             xx2 = xxb.reshape((1, xxb.size))                
             
+                
     elif pts:
         XXR = slv_dem.copy(new_raster=xxn)
         xx = XXR.raster_points(mst_dem.xy,nsize=3, mode='cubic')
-
+        
         dH = calculate_dH(mst_dem, slv_dem, pts)
         
         if xxb is not None:
@@ -777,6 +780,14 @@ def plot_bias(xx, dH, grp_xx, grp_dH, title, pp, pmod=None, smod=None, plotmin=N
 def final_histogram(dH0, dH1, dH2, dHfinal, pp):
     fig = plt.figure(figsize=(7, 5), dpi=600)
     plt.title('Elevation difference histograms', fontsize=14)
+    
+    
+    if isinstance(dH0, np.ma.masked_array):
+        dH0 = dH0.compressed()
+        dH1 = dH1.compressed()
+        dH2 = dH2.compressed()
+        dHfinal = dHfinal.compressed()
+        
     
     dH0 = np.squeeze(np.asarray(dH0[ np.logical_and.reduce((np.isfinite(dH0), (np.abs(dH0) < np.nanstd(dH0) * 3)))]))
     dH1 = np.squeeze(np.asarray(dH1[ np.logical_and.reduce((np.isfinite(dH1), (np.abs(dH1) < np.nanstd(dH1) * 3)))]))
@@ -1059,6 +1070,8 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
     dH1 = calculate_dH(mst_coreg, slv_coreg_xcorr, pts)
     dH2 = calculate_dH(mst_coreg, slv_coreg_xcorr_acorr0, pts)
     dH_final = calculate_dH(mst_coreg, slv_coreg_xcorr_acorr, pts)
+    
+    ### mask dH for 
     if not pts:
         # Calculate initial differences
         mytitle = 'dH Initial'
