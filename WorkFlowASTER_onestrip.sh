@@ -29,7 +29,7 @@ while getopts "s:z:c:q:wnf:t:y:ai:h" opt; do
     h)
       echo "Run the second step in the MMASTER processing chain."
       echo "usage: WorkFlowASTER_onestrip.sh -s SCENENAME -z 'UTMZONE' -f ZOOMF -t RESTERR -w false -h"
-      echo "    -s SCENENAME: Folder where zips of stips are located."
+      echo "    -s SCENENAME: Folder where zips of strips are located."
       echo "    -z UTMZONE  : UTM Zone of area of interest. Takes form 'NN +north(south)'"
       echo "    -c CorThr   : Correlation Threshold for estimates of Z min and max (optional, default : 0.7)"
       echo "    -q SzW      : Size of the correlation window in the last step (optional, default : 4, mean 9*9)"
@@ -37,9 +37,9 @@ while getopts "s:z:c:q:wnf:t:y:ai:h" opt; do
       echo "    -n NoCorDEM : Compute DEM with the uncorrected 3B image (computing with correction as well)"
       echo "    -f ZOOMF    : Run with different final resolution   (optional; default: 1)"
       echo "    -t RESTERR  : Run with different terrain resolution (optional; default: 30)"
-      echo "    -y do_ply   : Write point cloud (DEM drapped with ortho in ply)"
+      echo "    -y do_ply   : Write point cloud (DEM draped with ortho in ply)"
       echo "    -a do_angle : Compute track angle along orbit"
-      echo "    -i fitVersion : Version of Cross-track FitASTER to be used (Def 1, 2 availiable)"
+      echo "    -i fitVersion : Version of Cross-track FitASTER to be used (Def 1, 2 available)"
       echo "    -h          : displays this message and exits."
       echo " "
       exit 0
@@ -70,7 +70,7 @@ while getopts "s:z:c:q:wnf:t:y:ai:h" opt; do
       echo "SzW set to $SzW"
       ;;
     w)
-e     echo "Water mask selected: " $OPTARG
+      echo "Water mask selected: " $OPTARG
 	  nameWaterMask=$OPTARG
       ;;
     f)

@@ -2,6 +2,7 @@ from __future__ import print_function
 from future_builtins import zip
 from functools import partial
 import os
+import sys
 from glob import glob
 import errno
 import pyproj
@@ -490,15 +491,12 @@ def get_fit_variables(mst_dem, slv_dem, xxn, pts, xxb=None):
     """
     prepare input variables for fitting. 
     """
-
     if not pts:
         dHmat = calculate_dH(mst_dem, slv_dem, pts)
         dH = dHmat.img.reshape((1, dHmat.img.size))
         xx = xxn.reshape((1, xxn.size))
-
         if xxb is not None:
             xx2 = xxb.reshape((1, xxb.size))
-
         masked = isinstance(dH, np.ma.masked_array)
         if masked:
             xx = np.ma.masked_array(xxn.reshape((1, xxn.size)), dH.mask)
@@ -507,17 +505,13 @@ def get_fit_variables(mst_dem, slv_dem, xxn, pts, xxb=None):
                 xx2 = xx2.compressed()
             xx = xx.compressed()
             dH = dH.compressed()
-
     elif pts:
         XXR = slv_dem.copy(new_raster=xxn)
         xx = XXR.raster_points(mst_dem.xy, nsize=3, mode='cubic')
-
         dH = calculate_dH(mst_dem, slv_dem, pts)
-
         if xxb is not None:
             XXR2 = slv_dem.copy(new_raster=xxb)
             xx2 = XXR2.raster_points(mst_dem.xy, mode='cubic')
-
     # Mask and filter (remove outliers)
     mynan = np.logical_or.reduce((np.invert(np.isfinite(dH)),
                                   np.invert(np.isfinite(xx)),
@@ -547,9 +541,6 @@ def fitfun_polynomial(xx, params):
     return sum([p * (np.divide(xx, 1000) ** i) for i, p in enumerate(params)])
 
 
-#    return sum([p * (xx ** i) for i, p in enumerate(params)])
-
-
 def robust_polynomial_fit(xx, yy):
     print("Original Sample size :", yy.size)
     # mykeep=np.isfinite(yy) and np.isfinite(xx)
@@ -560,7 +551,7 @@ def robust_polynomial_fit(xx, yy):
 
     print("Final Sample size :", yy.size)
     print("Remaining NaNs :", np.sum(np.isnan(yy)))
-    sampsize = 50000  # np.int(np.floor(xx.size*0.25))
+    sampsize = min(int(0.15 * xx.size), 50000)  # np.int(np.floor(xx.size*0.25))
     if xx.size > sampsize:
         mysamp = np.random.randint(0, xx.size, sampsize)
     else:
@@ -618,7 +609,7 @@ def robust_polynomial_fit(xx, yy):
 
 def polynomial_fit(x, y):
     """
-    [DEPRECIATED] A polynomial search function for orders 1-6 given dependent (x) and independent (y)
+    [DEPRECATED] A polynomial search function for orders 1-6 given dependent (x) and independent (y)
     variables. Uses the numpy polynomial package. 
     """
     # edge removal
@@ -666,7 +657,7 @@ def polynomial_fit(x, y):
 def fitfun_sumofsin(xx, p):
     """
     The Base function for the sum of sines fitting to elevation differences in the along track (xx) direction
-    of the ASTER flightpath. DEPRECIATED - uses only one angle instead of two. see fitfun_sumofsin_2angle
+    of the ASTER flightpath. DEPRECATED - uses only one angle instead of two. see fitfun_sumofsin_2angle
     """
     #    myval = 0
     #    for bb in np.arange(0, p.size - 1, 3):
@@ -753,7 +744,7 @@ def plot_bias(xx, dH, grp_xx, grp_dH, title, pp, pmod=None, smod=None, plotmin=N
     mykeep = np.isfinite(dH)
     xx = xx[mykeep]
     dH = dH[mykeep]
-    sampsize = min(int(0.15 * xx.size), 30000)
+    sampsize = min(int(0.15 * xx.size), 50000)
     if xx.size > sampsize:
         mysamp = np.random.randint(0, xx.size, sampsize)
     else:
@@ -799,12 +790,15 @@ def plot_bias(xx, dH, grp_xx, grp_dH, title, pp, pmod=None, smod=None, plotmin=N
 def final_histogram(dH0, dH1, dH2, dHfinal, pp):
     fig = plt.figure(figsize=(7, 5), dpi=600)
     plt.title('Elevation difference histograms', fontsize=14)
-
-    dH0 = np.squeeze(np.asarray(dH0[np.logical_and.reduce((np.isfinite(dH0), (np.abs(dH0) < np.nanstd(dH0) * 3)))]))
-    dH1 = np.squeeze(np.asarray(dH1[np.logical_and.reduce((np.isfinite(dH1), (np.abs(dH1) < np.nanstd(dH1) * 3)))]))
-    dH2 = np.squeeze(np.asarray(dH2[np.logical_and.reduce((np.isfinite(dH2), (np.abs(dH2) < np.nanstd(dH2) * 3)))]))
-    dHfinal = np.squeeze(
-        np.asarray(dHfinal[np.logical_and.reduce((np.isfinite(dHfinal), (np.abs(dHfinal) < np.nanstd(dHfinal) * 3)))]))
+    if isinstance(dH0, np.ma.masked_array):
+        dH0 = dH0.compressed()
+        dH1 = dH1.compressed()
+        dH2 = dH2.compressed()
+        dHfinal = dHfinal.compressed()
+    dH0 = np.squeeze(np.asarray(dH0[ np.logical_and.reduce((np.isfinite(dH0), (np.abs(dH0) < np.nanstd(dH0) * 3)))]))
+    dH1 = np.squeeze(np.asarray(dH1[ np.logical_and.reduce((np.isfinite(dH1), (np.abs(dH1) < np.nanstd(dH1) * 3)))]))
+    dH2 = np.squeeze(np.asarray(dH2[ np.logical_and.reduce((np.isfinite(dH2), (np.abs(dH2) < np.nanstd(dH2) * 3)))]))
+    dHfinal = np.squeeze(np.asarray(dHfinal[ np.logical_and.reduce((np.isfinite(dHfinal), (np.abs(dHfinal) < np.nanstd(dHfinal) * 3)))]))
 
     if dH0[np.isfinite(dH0)].size < 2000:
         mybins = 40
@@ -921,7 +915,7 @@ def correct_along_track_bias(mst_dem, slv_dem, inangN, inangB, pp, pts):
     # should be the right size, since we've filtered out the nans in the above steps.
     print("Filtered Sample Size: ", xxn.size)
     # sampsize = np.int(np.floor(xx.size*0.25)) # for use as a percentage
-    sampsize = min(int(0.15 * xxn.size), 30000)
+    sampsize = min(int(0.15 * xxn.size), 50000)
     if xxn.size > sampsize:
         mysamp = np.random.randint(0, xxn.size, sampsize)
     else:
@@ -1005,7 +999,8 @@ def correct_along_track_bias(mst_dem, slv_dem, inangN, inangB, pp, pts):
 
 ################################################################################################
 def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
-                         pts=False, work_dir='.', out_dir='biasrem'):
+                         pts=False, work_dir='.', out_dir='biasrem',
+                         return_geoimg=True, write_log=False):
     """
     Removes cross track and along track biases from MMASTER DEMs. 
 
@@ -1027,8 +1022,16 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
         masterDEM should be a string representing an HDF5 file continaing ICESat data.
     out_dir : string, optional
         Location to save bias removal outputs. [default to the current directory]
+    return_geoimg : bool, optional
+        Return GeoImg objects of the corrected slave DEM and the co-registered master DEM [True]
+    write_log : bool, optional
+        Re-direct stdout, stderr to a log file in the work directory [False]
     """
-
+    os.chdir(work_dir)
+    
+    if write_log:
+        sys.stdout = open('mmaster_bias_correct' + str(os.getpid()) + '.log', 'w')
+        sys.stderr = open('mmaster_bias_correct' + str(os.getpid()) + '_error.log', 'w')
     # if the output directory does not exist, create it.
     # out_dir = os.path.sep.join([work_dir, out_dir])
     try:
@@ -1088,6 +1091,8 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
     dH1 = calculate_dH(mst_coreg, slv_coreg_xcorr, pts)
     dH2 = calculate_dH(mst_coreg, slv_coreg_xcorr_acorr0, pts)
     dH_final = calculate_dH(mst_coreg, slv_coreg_xcorr_acorr, pts)
+    
+    ### mask dH for 
     if not pts:
         # Calculate initial differences
         mytitle = 'dH Initial'
@@ -1138,4 +1143,5 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
     pp.close()
     print("Fin.")
 
-    return slv_coreg_xcorr_acorr, mst_coreg
+    if return_geoimg:
+        return slv_coreg_xcorr_acorr, mst_coreg
