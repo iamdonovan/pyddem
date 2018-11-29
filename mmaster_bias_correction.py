@@ -2,14 +2,14 @@
 from __future__ import print_function, division
 import os
 import argparse
+import multiprocessing as mp
 from glob import glob
 import numpy as np
 from mmaster_tools import mmaster_bias_removal
 
 
-def batch_process(args):
-    pass
-
+def batch_wrapper(arg_dict):
+    return mmaster_bias_removal(**arg_dict)
 
 def main():
     np.seterr(all='ignore')
@@ -34,27 +34,53 @@ def main():
                         help='directory to output files to (creates if not already present). [.]')
     parser.add_argument('-p', '--points', action='store_true', default=False,
                         help="process assuming that master DEM is point elevations [False].")
+    parser.add_argument('-l', '--log', action='store_true', default=False,
+                        help="write output to a log file rather than printing to the screen [False].")
     args = parser.parse_args()
     
     # figure out if we have one image or many
     print('Number of image directories given: {}'.format(len(args.indir)))
-    if len(args.indir) == 1:
-        args.indir = args.indir[0]
-        print('Running bias correction on {}'.format(args.indir))
-        os.chdir(args.indir)
-        print(os.getcwd())
-        if args.slavedem is None:
-            flist = glob('AST*_Z.tif')
-            args.slavedem = flist[0]
+    # only go through the trouble of setting up multiprocessing
+    # if we have more than one directory to work on.
+    if args.nproc > 1 and len(args.indir) > 1:
+        if args.nproc > mp.cpu_count():
+            print("{} cores specified to use, but I could only find \
+                  {} cores on this machine, so I'll use those.'".format(args.nproc, mp.cpu_count()))
+            args.nproc = mp.cpu_count
+        pool = mp.Pool(args.nproc)
+        # get a dictionary of arguments for each of the different DEMs,
+        # starting with the common arguments (master dem, glacier mask, etc.)
+        arg_dict = {'mst_dem': args.masterdem, 
+                    'glacmask': args.exc_mask, 
+                    'landmask': args.inc_mask, 
+                    'pts': args.points, 
+                    'out_dir': args.outdir,
+                    'return_geoimg': False,
+                    'write_log': True}
+        u_args = [{'work_dir': d, 'slv_dem': '{}_Z.tif'.format(d)} for d in args.indir]
+        for d in u_args:
+            d.update(arg_dict)
+        
+        pool.map(batch_wrapper, u_args)
+        pool.close()
 
-        mst_coreg, slv_coreg_xcorr_acorr_jcorr = mmaster_bias_removal(args.masterdem,
-                                                                      args.slavedem,
-                                                                      glacmask=args.exc_mask,
-                                                                      landmask=args.inc_mask,
-                                                                      out_dir=args.outdir,
-                                                                      pts=args.points)
     else:
-        print('not implemented yet!')
+        for indir in args.indir:
+            print('Running bias correction on {}'.format(indir))
+            os.chdir(indir)
+            print(os.getcwd())
+            if args.slavedem is None:
+                flist = glob('AST*_Z.tif')
+                args.slavedem = flist[0]
+                mmaster_bias_removal(args.masterdem,
+                                     args.slavedem,
+                                     glacmask=args.exc_mask,
+                                     landmask=args.inc_mask,
+                                     out_dir=args.outdir,
+                                     pts=args.points,
+                                     return_geoimg=False,
+                                     write_log=args.log)
+           
         
 
 if __name__ == "__main__":
