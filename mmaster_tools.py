@@ -551,7 +551,7 @@ def robust_polynomial_fit(xx, yy):
 
     print("Final Sample size :", yy.size)
     print("Remaining NaNs :", np.sum(np.isnan(yy)))
-    sampsize = min(int(0.15 * xx.size), 50000)  # np.int(np.floor(xx.size*0.25))
+    sampsize = min(int(0.15 * xx.size), 25000)  # np.int(np.floor(xx.size*0.25))
     if xx.size > sampsize:
         mysamp = np.random.randint(0, xx.size, sampsize)
     else:
@@ -699,8 +699,7 @@ def fitfun_sumofsin_2angle(xxn, xxb, p):
         myval = np.sum(p[aix] * np.sin(np.divide(2 * np.pi, p[bix]) *
                                        np.divide(xxn[:, :, np.newaxis], 1000) +
                                        p[cix]) + p[dix] * np.sin(np.divide(2 * np.pi, p[eix]) *
-                                                                 np.divide(xxb[:, :, np.newaxis], 1000) + p[fix]),
-                       axis=2)
+                                                                 np.divide(xxb[:, :, np.newaxis], 1000) + p[fix]), axis=2)
     return myval
 
 
@@ -715,10 +714,11 @@ def soft_loss(z):  # z is residual
     return out
 
 
-# why?
-def costfun_sumofsin(p, xxn, xxb, yy):
-    myval = fitfun_sumofsin_2angle(xxn, xxb, p)
-
+def costfun_sumofsin(p, xxn, yy, xxb=None):
+    if xxb is not None:
+        myval = fitfun_sumofsin_2angle(xxn, xxb, p)
+    else:
+        myval = fitfun_sumofsin(xxn, p)
     # DEFINE THE COST FUNCTION
     #    myerr = RMSE(yy - myval)
     #    myerr = nmad(yy - myval)
@@ -744,7 +744,7 @@ def plot_bias(xx, dH, grp_xx, grp_dH, title, pp, pmod=None, smod=None, plotmin=N
     mykeep = np.isfinite(dH)
     xx = xx[mykeep]
     dH = dH[mykeep]
-    sampsize = min(int(0.15 * xx.size), 50000)
+    sampsize = min(int(0.15 * xx.size), 25000)
     if xx.size > sampsize:
         mysamp = np.random.randint(0, xx.size, sampsize)
     else:
@@ -906,8 +906,10 @@ def correct_along_track_bias(mst_dem, slv_dem, inangN, inangB, pp, pts):
     print("Original Sample Size: ", np.where(np.isfinite(xxn))[0].size)
     #    mykeep = np.isfinite(yy) & np.isfinite(xxn) & np.isfinite(xxb) & (np.abs(yy) < np.nanstd(yy) * 3)
     #    mykeep = np.asarray(np.isfinite(yy) and np.isfinite(xxn) and np.isfinite(xxb) and (np.abs(yy) < np.nanstd(yy) * 3))
-    mykeep = np.logical_and.reduce(
-        (np.isfinite(yy), np.isfinite(xxn), np.isfinite(xxb), (np.abs(yy) < np.nanstd(yy) * 2.5)))
+    mykeep = np.logical_and.reduce((np.isfinite(yy), 
+                                    np.isfinite(xxn), 
+                                    np.isfinite(xxb), 
+                                    (np.abs(yy) < np.nanstd(yy) * 2.5)))
     xxn = np.squeeze(xxn[mykeep])
     xxb = np.squeeze(xxb[mykeep])
     yy = np.squeeze(yy[mykeep])
@@ -915,30 +917,37 @@ def correct_along_track_bias(mst_dem, slv_dem, inangN, inangB, pp, pts):
     # should be the right size, since we've filtered out the nans in the above steps.
     print("Filtered Sample Size: ", xxn.size)
     # sampsize = np.int(np.floor(xx.size*0.25)) # for use as a percentage
-    sampsize = min(int(0.15 * xxn.size), 50000)
+    sampsize = min(int(0.15 * xxn.size), 25000)
     if xxn.size > sampsize:
         mysamp = np.random.randint(0, xxn.size, sampsize)
     else:
         mysamp = np.arange(0, xxn.size)
-    print("Sum of Sines Fitting using ", mysamp.size, "samples")
-
+    
     fig = plt.figure(figsize=(7, 5), dpi=200)
     # fig.suptitle(title, fontsize = 14)
     plt.plot(xxn[mysamp], yy[mysamp], '^', ms=0.5, color='0.5', rasterized=True, fillstyle='full')
 
     # First define the bounds of the three sine wave coefficients to solve
     order = 3
-    lb1 = [0, 55, 0]
-    ub1 = [20, 140, 2 * np.pi]
-    lb2 = [0, 20, 0]
+    lb1 = [0, 55, 0] # long-wave amplitude, frequency, phase
+    ub1 = [20, 140, 2 * np.pi] # 
+    lb2 = [0, 20, 0] # mid-range
     ub2 = [15, 37, 2 * np.pi]
-    lb3 = [0, 3.5, 0]
+    lb3 = [0, 3.5, 0] # jitter
     ub3 = [3, 5.5, 2 * np.pi]
 
     lbb = np.concatenate((np.tile(lb1, 2 * order), np.tile(lb2, 2 * order), np.tile(lb3, 2 * order)))
     ubb = np.concatenate((np.tile(ub1, 2 * order), np.tile(ub2, 2 * order), np.tile(ub3, 2 * order)))
     p0 = np.divide(lbb + ubb, 2)
 
+    # use these parameters, plus the grouped statistics, to get an initial estimate for the sum of sines fit
+    print("Fitting smoothed data to find initial parameters.")
+    init_args = dict(args=(grp_xx, grp_dH), method="L-BFGS-B", 
+                     bounds=optimize.Bounds(lbb, ubb), options={"ftol": 1E-4})
+    init_results = optimize.basinhopping(costfun_sumofsin, p0, disp=True,
+                                         T=500, niter_success=20,
+                                         minimizer_kwargs=init_args)
+    init_results = init_results.lowest_optimization_result
     #    def errfun(p, xxn, xxb, yy):
     #        return fitfun_sumofsin_2angle(xxn, xxb, p) - yy
     #    myresults = optimize.least_squares(errfun, p0, args=(xxn[mysamp], xxb[mysamp], yy[mysamp]),
@@ -948,13 +957,13 @@ def correct_along_track_bias(mst_dem, slv_dem, inangN, inangB, pp, pts):
     #    myresults0 = optimize.minimize(fitfun_sumofsin_2angle2, p0, args=(xxn[mysamp], xxb[mysamp], yy[mysamp]),
     #                                  bounds=optimize.Bounds(lbb,ubb), method='L-BFGS-B',
     #                                  options={'maxiter': 1000,'maxfun':1000, 'ftol':1E-8})
-
-    minimizer_kwargs = dict(args=(xxn[mysamp], xxb[mysamp], yy[mysamp]),
+    print("Sum of Sines Fitting using ", mysamp.size, "samples")
+    minimizer_kwargs = dict(args=(xxn[mysamp], yy[mysamp], xxb[mysamp]),
                             method="L-BFGS-B",
                             bounds=optimize.Bounds(lbb, ubb),
                             options={"ftol": 1E-4})
-    myresults = optimize.basinhopping(costfun_sumofsin, p0, disp=True,
-                                      T=100, niter_success=10,
+    myresults = optimize.basinhopping(costfun_sumofsin, init_results.x, disp=True,
+                                      T=500, niter_success=10,
                                       minimizer_kwargs=minimizer_kwargs)
     myresults = myresults.lowest_optimization_result
 
@@ -1115,19 +1124,42 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
         # Calculate initial differences
         final_histogram(dH0, dH1, dH2, dH_final, pp)
 
-    #### PREPARE OUTPUT
+    #### PREPARE OUTPUT - have to apply the corrections to the original, unfiltered slave DEM.
+    # first, we apply the co-registration shift.
+    orig_slv = GeoImg(slv_dem)
+    orig_slv.shift(shift_params[0], shift_params[1])
+    orig_slv.img = orig_slv.img + shift_params[2]
+    
+    # now, calculate and apply the cross-track correction
+    myang = np.deg2rad(ang_mapNB.img)
+    xxr, _ = get_xy_rot(orig_slv, myang)
+    cross_correction = fitfun_polynomial(xxr, pcoef)
+    orig_slv.img = orig_slv.img + cross_correction
+    
     outname = os.path.splitext(slv_dem)[0] + "_adj_X.tif"
-    slv_coreg_xcorr.write(outname, out_folder=out_dir)
+    orig_slv.write(outname, out_folder=out_dir)
     np.savetxt(os.path.sep.join([out_dir, 'params_CrossTrack_Polynomial.txt']), pcoef)
     plt.close("all")
 
+    # now, calculate and apply the along-track corrections
+    xxn_mat, xxb_mat = get_atrack_coord(orig_slv, ang_mapN, ang_mapB)
+
+    sinmod_low = fitfun_sumofsin_2angle(xxn_mat, xxb_mat, scoef0)
+    along_correction_low = np.reshape(sinmod_low, orig_slv.img.shape)
+    orig_slv.img = orig_slv.img + along_correction_low
+    
     outname = os.path.splitext(slv_dem)[0] + "_adj_XA.tif"
-    slv_coreg_xcorr_acorr0.write(outname, out_folder=out_dir)
+    orig_slv.write(outname, out_folder=out_dir)
     np.savetxt(os.path.sep.join([out_dir, 'params_AlongTrack_SumofSines_lowfreq.txt']), scoef0)
     plt.close("all")
 
+    # finally, calculate and apply the full-frequency along-track correction.
+    sinmod = fitfun_sumofsin_2angle(xxn_mat, xxb_mat, scoef)
+    along_correction = np.reshape(sinmod, orig_slv.img.shape)
+    orig_slv.img = orig_slv.img - along_correction_low + along_correction
+
     outname = os.path.splitext(slv_dem)[0] + "_adj_XAJ.tif"
-    slv_coreg_xcorr_acorr.write(outname, out_folder=out_dir)
+    orig_slv.write(outname, out_folder=out_dir)
     np.savetxt(os.path.sep.join([out_dir, 'params_AlongTrack_SumofSines.txt']), scoef)
     plt.close("all")
 
@@ -1137,6 +1169,10 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
     mst_coreg, slv_adj_coreg, shift_params2 = dem_coregistration(mst_dem, slv_coreg_xcorr_acorr,
                                                                  glaciermask=glacmask, landmask=landmask,
                                                                  outdir=recoreg_outdir, pts=pts)
+
+    orig_slv.shift(shift_params2[0], shift_params2[1])
+    orig_slv.img = orig_slv.img + shift_params2[2]
+    orig_slv.write(os.path.splitext(slv_dem)[0] + "_adj_XAJ_final.tif", out_folder=out_dir)
 
     plt.close("all")
     # clean-up 
