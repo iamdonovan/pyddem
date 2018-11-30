@@ -25,7 +25,7 @@ do_angle=false
 NoCorDEM=false
 fitVersion=1
 
-while getopts "s:z:c:q:w:n:f:t:y:a:i:h" opt; do
+while getopts "s:z:c:q:w:n:f:t:y:ai:h" opt; do
   case $opt in
     h)
       echo "Run the second step in the MMASTER processing chain."
