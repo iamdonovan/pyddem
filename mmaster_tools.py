@@ -1036,11 +1036,15 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
     write_log : bool, optional
         Re-direct stdout, stderr to a log file in the work directory [False]
     """
+    orig_dir = os.getcwd()
     os.chdir(work_dir)
     
     if write_log:
-        sys.stdout = open('mmaster_bias_correct' + str(os.getpid()) + '.log', 'w')
-        sys.stderr = open('mmaster_bias_correct' + str(os.getpid()) + '_error.log', 'w')
+        print(os.getcwd())
+        logfile = open('mmaster_bias_correct_' + str(os.getpid()) + '.log', 'w')
+        errfile = open('mmaster_bias_correct_' + str(os.getpid()) + '_error.log', 'w')
+        sys.stdout = logfile
+        sys.stderr = errfile
     # if the output directory does not exist, create it.
     # out_dir = os.path.sep.join([work_dir, out_dir])
     try:
@@ -1181,3 +1185,11 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
 
     if return_geoimg:
         return slv_coreg_xcorr_acorr, mst_coreg
+
+    if write_log:
+        sys.stdout = sys.__stdout__
+        sys.stderr = sys.__stderr__
+        logfile.close()
+        errfile.close()
+
+    os.chdir(orig_dir)
