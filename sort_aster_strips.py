@@ -75,6 +75,9 @@ def main():
                 matched_inds = matched_inds[0:break_ind]
             # here, we make sure that we only return strips that are at most max_length long.
             for strip in sliding_window(matched_inds, args.max_length, args.max_length-1):
+                strip = list(strip)
+                if len(matched_inds) > args.max_length and len(strip) == args.max_length-1:
+                    strip.insert(0, strip[0]-1)                    
                 striplist.append(filenames[strip])
     print('Found {} strips, out of {} individual scenes'.format(len(striplist), len(filenames)))
     # now that the individual scenes are sorted into "strips",
