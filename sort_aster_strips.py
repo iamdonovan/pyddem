@@ -88,12 +88,12 @@ def main():
 
     for s in striplist:
         if len(s) == 1:
-            #shutil.move(s[0] + '.zip', 'singles')
+            shutil.move(s[0] + '.zip', 'singles')
             shutil.move(s[0] + '.zip.met', 'singles')
         else:
             mkdir_p(os.path.join('strips', s[0][0:25]))
             for ss in s:                
-                #shutil.copy(ss + '.zip', os.path.join('strips', s[0][0:25]))
+                shutil.copy(ss + '.zip', os.path.join('strips', s[0][0:25]))
                 shutil.copy(ss + '.zip.met', os.path.join('strips', s[0][0:25]))
     # now, clean up the current folder.
     for f in glob('*.zip*'):
