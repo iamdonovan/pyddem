@@ -15,8 +15,10 @@ import fiona.crs
 import matplotlib.pylab as plt
 import pandas as pd
 import scipy.optimize as optimize
+import time
 from skimage.morphology import disk
-from scipy.ndimage.morphology import binary_opening
+from scipy.ndimage.morphology import binary_opening, binary_dilation
+from scipy.ndimage.filters import median_filter
 from matplotlib.backends.backend_pdf import PdfPages
 from shapely.geometry.polygon import Polygon, orient
 from shapely.geometry import mapping, LineString, Point
@@ -383,7 +385,24 @@ def calculate_dH(mst_dem, slv_dem, pts):
     if not pts:
         zupdate = np.ma.array(mst_dem.img.data - slv_dem.img.data, mask=slv_dem.img.mask)
         #        zupdate2 = np.ma.array(ndimage.median_filter(zupdate, 7), mask=slv_dem.img.mask)
-        zupdate2 = np.ma.array(nanmedian_filter(zupdate, size=7), mask=slv_dem.img.mask)
+        
+        # JIT_FILTER_FUNCTION DOESNT WORK IN WINDOWS
+        # Create conditional for windows system. jit_filter_function is currently 
+        # failing due to Windows incompatibility with numba
+        # https://github.com/numba/numba/issues/2578
+        #
+        if os.name=='nt': 
+            # first get the mask of nans
+            kernel = np.ones((3,3),np.uint8)
+            mymask = np.multiply(np.isnan(zupdate),1,dtype='uint8')
+            mymask2 = binary_dilation(mymask,kernel)
+            zupdate2 = median_filter(zupdate,7)
+            zupdate2[mymask2==1] = np.nan
+            zupdate2 = np.ma.array(zupdate2,mask=slv_dem.img.mask)
+            
+        else: # on UNIX
+            zupdate2 = np.ma.array(nanmedian_filter(zupdate, size=7), mask=slv_dem.img.mask)
+                
         dH = slv_dem.copy(new_raster=zupdate2)
 
         master_mask = isinstance(mst_dem.img, np.ma.masked_array)
@@ -942,12 +961,17 @@ def correct_along_track_bias(mst_dem, slv_dem, inangN, inangB, pp, pts):
 
     # use these parameters, plus the grouped statistics, to get an initial estimate for the sum of sines fit
     print("Fitting smoothed data to find initial parameters.")
+    tt0 = time.time()
     init_args = dict(args=(grp_xx, grp_dH), method="L-BFGS-B", 
                      bounds=optimize.Bounds(lbb, ubb), options={"ftol": 1E-4})
     init_results = optimize.basinhopping(costfun_sumofsin, p0, disp=True,
-                                         T=500, niter_success=20,
+                                         T=500, niter_success=15,
                                          minimizer_kwargs=init_args)
     init_results = init_results.lowest_optimization_result
+    
+#    init_results = optimize.least_squares(costfun_sumofsin, p0, args=(grp_xx, grp_dH),
+#                                               method='trf', bounds=([lbb, ubb]), loss='soft_l1',
+#                                               f_scale=0.8, ftol=1E-6, xtol=1E-6)
     #    def errfun(p, xxn, xxb, yy):
     #        return fitfun_sumofsin_2angle(xxn, xxb, p) - yy
     #    myresults = optimize.least_squares(errfun, p0, args=(xxn[mysamp], xxb[mysamp], yy[mysamp]),
@@ -957,6 +981,9 @@ def correct_along_track_bias(mst_dem, slv_dem, inangN, inangB, pp, pts):
     #    myresults0 = optimize.minimize(fitfun_sumofsin_2angle2, p0, args=(xxn[mysamp], xxb[mysamp], yy[mysamp]),
     #                                  bounds=optimize.Bounds(lbb,ubb), method='L-BFGS-B',
     #                                  options={'maxiter': 1000,'maxfun':1000, 'ftol':1E-8})
+    
+    tt1 = time.time()
+    print("Initial paramaters found in : ", (tt1-tt0), " seconds")
     print("Sum of Sines Fitting using ", mysamp.size, "samples")
     minimizer_kwargs = dict(args=(xxn[mysamp], yy[mysamp], xxb[mysamp]),
                             method="L-BFGS-B",
@@ -966,12 +993,14 @@ def correct_along_track_bias(mst_dem, slv_dem, inangN, inangB, pp, pts):
                                       T=500, niter_success=10,
                                       minimizer_kwargs=minimizer_kwargs)
     myresults = myresults.lowest_optimization_result
+    tt2 = time.time()
+    print("Sum of Sinses fitting finished in : ", (tt2-tt1), " seconds")
 
     xxn2 = np.linspace(np.min(xxn[mysamp]), np.max(xxn[mysamp]), grp_xx.size)
     xxb2 = np.linspace(np.min(xxb[mysamp]), np.max(xxb[mysamp]), grp_xx.size)
-    #    mypred0 = fitfun_sumofsin_2angle(xxn2, xxb2, myresults0.x)
+    mypred0 = fitfun_sumofsin(xxn2, init_results.x)
     mypred = fitfun_sumofsin_2angle(xxn2, xxb2, myresults.x)
-    #    plt.plot(xxn2, mypred0, '-', ms=2, color='k', rasterized=True, fillstyle='full')
+    plt.plot(xxn2, mypred0, '-', ms=2, color='k', rasterized=True, fillstyle='full')
     plt.plot(xxn2, mypred, '-', ms=2, color='r', rasterized=True, fillstyle='full')
     sinmod = fitfun_sumofsin_2angle(xxn_mat, xxb_mat, myresults.x)
 
