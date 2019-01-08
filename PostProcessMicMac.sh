@@ -47,7 +47,7 @@ fi
 
 if [ $sub_set -eq 0 ]; then
     echo "No subdirectories specified, looking for directories of form AST_*"
-    subList=$(ls -d AST_*);
+    subList=$(ls -d AST_*/);
 fi
     
 resize_rasters () {
@@ -85,6 +85,7 @@ echo "getting masked DEMs and orthoimages."
 
 for dir in ${subList[@]}; do
 	echo $dir
+    dir=${dir%%/};
 
 	#tmpstr=${dir:11:8}
 	#datestr=${tmpstr:4:4}${tmpstr:0:4}
