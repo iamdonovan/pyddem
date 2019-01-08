@@ -22,7 +22,7 @@ def main():
                         help="directory/directories where final, georeferenced images are located.")
     parser.add_argument('-s', '--slavedem', type=str, default=None,
                         help='(optional) name of DEM to correct. By default, mmaster_bias_correction.py\
-                        looks for MMASTER DEMs of the form AST_...._Z.tif')
+                        looks for MMASTER DEMs of the form AST_L1A_..._Z.tif')
     parser.add_argument('-a', '--exc_mask', type=str, default=None,
                         help='exclusion mask. Areas inside of this shapefile (i.e., glaciers)\
                         will not be used for coregistration [None]')

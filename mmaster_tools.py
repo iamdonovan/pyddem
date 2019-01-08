@@ -1,5 +1,5 @@
 from __future__ import print_function
-from future_builtins import zip
+#from future_builtins import zip
 from functools import partial
 import os
 import sys
