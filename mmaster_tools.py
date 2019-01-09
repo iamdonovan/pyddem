@@ -1,5 +1,5 @@
 from __future__ import print_function
-from future_builtins import zip
+#from future_builtins import zip
 from functools import partial
 import os
 import shutil
@@ -22,7 +22,7 @@ from pybob.coreg_tools import dem_coregistration, false_hillshade, get_slope, fi
 from pybob.GeoImg import GeoImg
 from scipy import ndimage
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from IPython import embed
+# from IPython import embed
 
 
 def make_mask(inpoly, pts, raster_out=False):
