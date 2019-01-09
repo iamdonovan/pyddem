@@ -12,26 +12,32 @@ NoCorDEM=false #default don't compute uncorrected DEM
 ZoomF=1 #this has to be passed to PostProcessMicMac, and WorkFlowPt2
 RESTERR=30
 do_ply=false #default no ply point cloud generation
+do_angle=false
+do_strip=false
+fitVersion=1
 
 # figure out what options we were passed: 
 #":hz:wnc:f:t:pr" 
-while getopts "z:c:q:w:nf:t:yprh" opt; do
+while getopts "z:c:q:w:nf:t:yadi:prh" opt; do
   case $opt in
     h)
       echo "Run the MicMac-based ASTER DEM pipeline from start to finish."
       echo "Call from the the directory where your zip and .met files are."
       echo "usage: RunMicMacAster_batch.sh -z 'UTMZONE' -f ZOOMF -t RESTERR -wrph"
-      echo "    -z UTMZONE  : UTM Zone of area of interest. Takes form 'NN +north(south)'"
-      echo "    -c CorThr   : Correlation Threshold for estimates of Z min and max (optional, default : 0.7)"
-      echo "    -q SzW      : Size of the correlation window in the last step (optional, default : 2, mean 5*5)"
-      echo "    -w          : Name of shapefile to skip masked areas (usually water, this is optional, default : false)."
-      echo "    -n NoCorDEM : Compute DEM with the uncorrected 3B image (computing with correction as well)"
-      echo "    -f ZOOMF    : Run with different final resolution   (optional; default: 1)"
-      echo "    -t RESTERR  : Run with different terrain resolution (optional; default: 30)"
-      echo "    -y do_ply   : Write point cloud (DEM drapped with ortho in ply)"
-      echo "    -p  	: Purge results and run fresh from .zip files."
-      echo "    -r  	: Re-process, but don't purge everything."
-      echo "    -h  	: displays this message and exits."
+      echo "    -z UTMZONE    : UTM Zone of area of interest. Takes form 'NN +north(south)'"
+      echo "    -c CorThr     : Correlation Threshold for estimates of Z min and max (optional, default : 0.7)"
+      echo "    -q SzW        : Size of the correlation window in the last step (optional, default : 2, mean 5*5)"
+      echo "    -w            : Name of shapefile to skip masked areas (usually water, this is optional, default : false)."
+      echo "    -n NoCorDEM   : Compute DEM with the uncorrected 3B image (computing with correction as well)"
+      echo "    -f ZOOMF      : Run with different final resolution   (optional; default: 1)"
+      echo "    -t RESTERR    : Run with different terrain resolution (optional; default: 30)"
+      echo "    -y do_ply     : Write point cloud (DEM drapped with ortho in ply)"
+      echo "    -a do_angle   : Compute track angle along orbit"
+	  echo "    -d do_strip   : Compute for strips of more than 1 scene (default: false)"
+      echo "    -i fitVersion : Version of Cross-track FitASTER to be used (Def 1, 2 available)"
+      echo "    -p  	      : Purge results and run fresh from .zip files."
+      echo "    -r  	      : Re-process, but don't purge everything."
+      echo "    -h  	      : displays this message and exits."
       echo " "
       exit 0
       ;;
@@ -51,6 +57,10 @@ while getopts "z:c:q:w:nf:t:yprh" opt; do
       echo "Water mask selected: " $OPTARG
 	  nameWaterMask=$OPTARG
       ;;
+    i)
+      echo "ASTER Fit Version: " $OPTARG
+	  fitVersion=$OPTARG
+      ;;
 	n)
 	  echo "DEM with uncorrected 3B will be computed"
       NoCorDEM=true
@@ -59,6 +69,14 @@ while getopts "z:c:q:w:nf:t:yprh" opt; do
 	  echo "Point cloud (.ply) will be exported"
       do_ply=true
       ;;
+    a)
+	  echo "Orbit angles will be exported"
+      do_angle=true
+      ;; 
+	d)
+	  echo "Aster strips will be processed"
+      do_strip=true
+      ;;   
     f)
       ZoomF=$OPTARG
       echo "ZoomF set to $ZoomF"
@@ -123,17 +141,28 @@ here=$(pwd)
 
 #Sorting the zip and met files into individual folders
 if [ $run_again -eq 1 ]; then
-	find ./ -maxdepth 1 -name "*.zip" | while read filename; do
-	    f=$(basename "$filename")
-	    f1=${f%.*}
-	    mkdir -p "$f1" "$f1/RawData"
-	    unzip $f -d "$f1/RawData"
-	    mv "$f" "$f1"
-	    echo "start=\$SECONDS" >> ProcessAll.sh
-	    echo "WorkFlowASTER_onescene.sh -c " $CorThr " -q " $SzW " -s " $f1 " -z \""$UTMZone"\" -w " $nameWaterMask " -f " $ZoomF " -t " $RESTERR " -n " $NoCorDEM  " -y " $do_ply >> ProcessAll.sh
-	    echo "duration=\$(( SECONDS - start ))" >> ProcessAll.sh
-	    echo "echo Procesing of " $f1 " took \" \$duration \" s to process >> Timings.txt" >> ProcessAll.sh
-	done  
+	if [ "$do_strip" = false ]; then
+		find ./ -maxdepth 1 -name "*.zip" | while read filename; do
+			f=$(basename "$filename")
+			f1=${f%.*}
+			mkdir -p "$f1" "$f1/RawData"
+			unzip $f -d "$f1/RawData"
+			mv "$f" "$f1"
+			echo "start=\$SECONDS" >> ProcessAll.sh
+			echo "WorkFlowASTER_onescene.sh -c " $CorThr " -q " $SzW " -s " $f1 " -z \""$UTMZone"\" -w " $nameWaterMask " -f " $ZoomF " -t " $RESTERR " -n " $NoCorDEM  " -y " $do_ply " -a " $do_angle " -i " $fitVersion >> ProcessAll.sh
+			echo "duration=\$(( SECONDS - start ))" >> ProcessAll.sh
+			echo "echo Procesing of " $f1 " took \" \$duration \" s to process >> Timings.txt" >> ProcessAll.sh
+		done  
+	else
+		find ./ -maxdepth 1 -name "AST_*" | while read filename; do
+			f1=${filename:2}
+			echo $f1
+			echo "start=\$SECONDS" >> ProcessAll.sh
+			echo "WorkFlowASTER_onestrip.sh -c " $CorThr " -q " $SzW " -s " $f1 " -z \""$UTMZone"\" -w " $nameWaterMask " -f " $ZoomF " -t " $RESTERR " -n " $NoCorDEM  " -y " $do_ply " -a " $do_angle " -i " $fitVersion >> ProcessAll.sh
+			echo "duration=\$(( SECONDS - start ))" >> ProcessAll.sh
+			echo "echo Procesing of " $f1 " took \" \$duration \" s to process >> Timings.txt" >> ProcessAll.sh
+		done
+	fi
 
 	echo "Moved and extracted zip files"
 

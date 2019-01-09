@@ -47,7 +47,7 @@ fi
 
 if [ $sub_set -eq 0 ]; then
     echo "No subdirectories specified, looking for directories of form AST_*"
-    subList=$(ls -d AST_*);
+    subList=$(ls -d AST_*/);
 fi
     
 resize_rasters () {
@@ -85,6 +85,7 @@ echo "getting masked DEMs and orthoimages."
 
 for dir in ${subList[@]}; do
 	echo $dir
+    dir=${dir%%/};
 
 	#tmpstr=${dir:11:8}
 	#datestr=${tmpstr:4:4}${tmpstr:0:4}
@@ -147,6 +148,7 @@ for dir in ${subList[@]}; do
 		rm -v tmp_msk.tif tmp_geo.tif
 		rm -v $dir\_Z.tif $dir\_CORR.tif
 		cd ../
+
 		if [ -d "Ortho-MEC-Malt" ]; then 			
 			cd Ortho-MEC-Malt			
 			gdal_calc.py -B tmp_mskDouble.tif -A tmp_V123.tif --outfile=$dir\_V123.tif --calc="((A!=255)*(A+1)+(A==255)*A)*(B>0)" --NoDataValue=0 --allBands=A
@@ -157,8 +159,57 @@ for dir in ${subList[@]}; do
 			cd ../
 		fi
 		cp -v TrackAngleMap*.tif $outdir/$datestr/
+		#cp -v ./zips/*.zip.met $outdir/$datestr/
+		find . -name '*.zip.met' -exec cp {} $outdir/$datestr/ \;
 	else
-		echo "No directory MEC-Malt found in $dir. Exiting."
+		echo "No directory MEC-Malt found. Trying to find output files in this directory."
+
+        if [ -f "Correl_STD-MALT_Num_8.tif" ]; then
+    		echo "Georeferencing correlation mask"
+    		gdal_translate -a_nodata 0 -a_srs "+proj=utm +zone=$1 +ellps=WGS84 +datum=WGS84 +units=m +no_defs" Correl_STD-MALT_Num_8.tif $dir\_CORR.tif        
+        else
+            echo "No file Correl_STD-MALT_Num_8.tif found in $dir. Continuing."
+        fi
+
+        if [ -f "Z_Num9_DeZoom1_STD-MALT.tif" ]; then
+	    	echo "Creating temporary georeferenced DEM"
+    		gdal_translate -a_srs "+proj=utm +zone=$1 +ellps=WGS84 +datum=WGS84 +units=m +no_defs" Z_Num9_DeZoom1_STD-MALT.tif tmp_geo.tif   
+        else
+            echo "No file Z_Num9_DeZoom1_STD-MALT.tif found in $dir. Continuing."
+        fi
+
+        if [ -f "AutoMask_STD-MALT_Num_8.tif" ]; then
+    		echo "Creating temporary georeferenced Mask"
+    		gdal_translate -a_srs "+proj=utm +zone=$1 +ellps=WGS84 +datum=WGS84 +units=m +no_defs" -a_nodata 0 AutoMask_STD-MALT_Num_8.tif tmp_msk.tif      
+        else
+            echo "No file AutoMask_STD-MALT_Num_8.tif found in $dir. Continuing."
+        fi
+
+		echo "Creating double size correlation mask for ortho"
+		gdal_translate -tr 15 15 -a_srs "+proj=utm +zone=$1 +ellps=WGS84 +datum=WGS84 +units=m +no_defs" -a_nodata 0 AutoMask_STD-MALT_Num_8.tif tmp_mskDouble.tif
+		echo "Creating temporary georeferenced ortho"
+		gdal_translate -tr 15 15 -a_srs "+proj=utm +zone=$1 +ellps=WGS84 +datum=WGS84 +units=m +no_defs" Orthophotomosaic.tif tmp_V123.tif
+        resize_rasters tmp_mskDouble.tif tmp_V123.tif
+
+		echo "Applying mask to georeferenced DEM"
+        gdal_calc.py -A tmp_msk.tif -B tmp_geo.tif --outfile=$dir\_Z.tif --calc="B*(A>0)" --NoDataValue=-9999
+		cp -v $dir\_Z.tif $outdir/$datestr #might be good to code orig. wd here.
+
+		gdaldem hillshade $dir\_Z.tif $outdir/$datestr/$dir\_HS.tif
+		gdal_calc.py -A $dir\_CORR.tif --outfile=$outdir/$datestr/$dir\_CORR.tif --calc="((A.astype(float)-127)/128)*100" --NoDataValue=-9999
+		#cp -v $dir\_CORR.tif $outdir/$datestr #might be good to code orig. wd here.
+		rm -v tmp_msk.tif tmp_geo.tif
+		rm -v $dir\_Z.tif $dir\_CORR.tif
+
+		gdal_calc.py -B tmp_mskDouble.tif -A tmp_V123.tif --outfile=$dir\_V123.tif --calc="((A!=255)*(A+1)+(A==255)*A)*(B>0)" --NoDataValue=0 --allBands=A
+		#Expression complicated to solve real 0 values not being NoData and 255 no being +1-ed to 0
+		rm -v tmp_V123.tif tmp_mskDouble.tif
+		cp -v $dir\_V123.tif $outdir/$datestr
+		rm -v $dir\_V123.tif
+
+		cp -v TrackAngleMap*.tif $outdir/$datestr/
+		#cp -v ./zips/*.zip.met $outdir/$datestr/
+		find . -name '*.zip.met' -exec cp {} $outdir/$datestr/ \;
 	fi
 
 	cd $basedir #back to original directory.

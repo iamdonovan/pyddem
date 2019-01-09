@@ -12,6 +12,11 @@ def parse_aster_filename(fname):
     return datetime.strptime(fname[11:25], '%m%d%Y%H%M%S')
 
 
+def sliding_window(a, size, step):
+    for i in range(0, len(a)-1, step):
+        yield(a[i:i+size])
+
+
 def mkdir_p(outdir):
     try:
         os.makedirs(outdir)
@@ -25,7 +30,9 @@ def mkdir_p(outdir):
 def main():
     parser = argparse.ArgumentParser(description="Sort ASTER scenes into folders based on whether \
     or not they form continuous strips.")
-    parser.add_argument('--folder', action='store', type=str, help="Folder with two co-registered DEMs.")
+    parser.add_argument('--folder', action='store', type=str, help="Folder with raw, unsorted ASTER data.")
+    parser.add_argument('--max_length', action='store', type=int, default=3, 
+                        help="Maximum number of scenes to put into a strip [3].")
     args = parser.parse_args()
     
     if args.folder is not None:
@@ -33,7 +40,7 @@ def main():
         
     print('Looking in folder {}'.format(os.getcwd()))
 
-    flist = glob('*.zip')
+    flist = glob('*.zip.met')
     filenames = np.array([f.rsplit('.zip', 1)[0] for f in flist])
     filenames.sort()
     dates = [parse_aster_filename(f) for f in filenames]
@@ -66,8 +73,12 @@ def main():
                 # we only need the first index, add 1 because of diff
                 break_ind = break_inds[0] + 1
                 matched_inds = matched_inds[0:break_ind]
-        
-            striplist.append(filenames[matched_inds])
+            # here, we make sure that we only return strips that are at most max_length long.
+            for strip in sliding_window(matched_inds, args.max_length, args.max_length-1):
+                strip = list(strip)
+                if len(matched_inds) > args.max_length and len(strip) == args.max_length-1:
+                    strip.insert(0, strip[0]-1)                    
+                striplist.append(filenames[strip])
     print('Found {} strips, out of {} individual scenes'.format(len(striplist), len(filenames)))
     # now that the individual scenes are sorted into "strips",
     # we can create "strip" and "single" folders
@@ -82,8 +93,11 @@ def main():
         else:
             mkdir_p(os.path.join('strips', s[0][0:25]))
             for ss in s:                
-                shutil.move(ss + '.zip', os.path.join('strips', s[0][0:25]))
-                shutil.move(ss + '.zip.met', os.path.join('strips', s[0][0:25]))
+                shutil.copy(ss + '.zip', os.path.join('strips', s[0][0:25]))
+                shutil.copy(ss + '.zip.met', os.path.join('strips', s[0][0:25]))
+    # now, clean up the current folder.
+    for f in glob('*.zip*'):
+        os.remove(f)
     print('Fin.')
 
 
