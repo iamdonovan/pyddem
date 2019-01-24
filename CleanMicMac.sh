@@ -18,7 +18,7 @@ for dir in $(ls -d AST*/); do
 	if [ -d "Ortho-MEC-Malt" ]; then
 		cd Ortho-MEC-Malt
 
-		mv -v Ort_FalseColor* ..
+		#mv -v Ort_FalseColor* ..
 		mv -v Orthophotomosaic.* ..
 
 		cd ../
@@ -31,6 +31,7 @@ for dir in $(ls -d AST*/); do
     fi
 
     rm AST*3B.* AST*3N.* RPC* FalseColor*.*
+    rm *FullRes* 
 	rm -r GeoI-Px processing Pyram RawData Tmp-MM-Dir ImOrig MEC-Mini MEC-Malt Ortho-MEC-Malt MEC-WaterMask TA
 	cd ../ 
     mv -v $dir PROCESSED_INITIAL/
