@@ -1036,7 +1036,6 @@ def correct_along_track_bias(mst_dem, slv_dem, inangN, inangB, pp, pts):
     return (slv_dem, out_corr, myresults.x), (slv_dem2, out_corr2, acoeff)
 
 
-################################################################################################
 def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
                          pts=False, work_dir='.', out_dir='biasrem',
                          return_geoimg=True, write_log=False):
