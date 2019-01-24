@@ -4,6 +4,8 @@ import os
 import argparse
 import multiprocessing as mp
 from glob import glob
+import matplotlib
+matplotlib.use('Agg')
 import numpy as np
 from mmaster_tools import mmaster_bias_removal
 

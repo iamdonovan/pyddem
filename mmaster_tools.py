@@ -772,7 +772,8 @@ def plot_bias(xx, dH, grp_xx, grp_dH, title, pp, pmod=None, smod=None, plotmin=N
 
     # title = 'Cross'
     fig = plt.figure(figsize=(7, 5), dpi=200)
-    fig.suptitle(title + 'track bias', fontsize=14)
+    #fig.suptitle(title + 'track bias', fontsize=14)
+    plt.title(title + 'track bias', fontsize=14)
     if plotmin is None:
         plt.plot(xx[mysamp], dH[mysamp], '^', ms=0.75, color='0.5', rasterized=True, fillstyle='full',
                  label="Raw [samples]")
@@ -795,7 +796,7 @@ def plot_bias(xx, dH, grp_xx, grp_dH, title, pp, pmod=None, smod=None, plotmin=N
     # plt.axis([0, 360, -200, 200])
     plt.xlabel(title + ' track distance [meters]')
     plt.ylabel('dH [meters]')
-    plt.legend(loc=0)
+    plt.legend(loc='lower right')
     #    plt.legend(('Raw [samples]', 'Grouped Median', 'Fit'), loc=1)
 
     if txt is not None:
@@ -860,7 +861,7 @@ def final_histogram(dH0, dH1, dH2, dHfinal, pp):
     plt.text(0.05, 0.45, 'RMSE: ' + ('{:.1f} m'.format(stats_fin[3])),
              fontsize=8, fontweight='bold', color='red', family='monospace', transform=plt.gca().transAxes)
 
-    plt.legend(loc=0)
+    plt.legend(loc='upper right')
 
     pp.savefig(fig, bbox_inches='tight', dpi=200)
 
