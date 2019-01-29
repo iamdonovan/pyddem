@@ -1,8 +1,8 @@
 #!/bin/bash 
 mkdir -p PROCESSED_INITIAL
 
-for dir in $(ls -d AST*); do 
-	echo $dir
+for dir in $(ls -d AST*/); do 	
+    echo $dir
 	cd $dir 
 
 	if [ -d "MEC-Malt" ]; then
@@ -18,7 +18,7 @@ for dir in $(ls -d AST*); do
 	if [ -d "Ortho-MEC-Malt" ]; then
 		cd Ortho-MEC-Malt
 
-		mv -v Ort_FalseColor* ..
+		#mv -v Ort_FalseColor* ..
 		mv -v Orthophotomosaic.* ..
 
 		cd ../
@@ -31,7 +31,8 @@ for dir in $(ls -d AST*); do
     fi
 
     rm AST*3B.* AST*3N.* RPC* FalseColor*.*
-	rm -r GeoI-Px processing Pyram RawData Tmp-MM-Dir ImOrig MEC-Mini MEC-Malt Ortho-MEC-Malt
+    rm *FullRes* 
+	rm -r GeoI-Px processing Pyram RawData Tmp-MM-Dir ImOrig MEC-Mini MEC-Malt Ortho-MEC-Malt MEC-WaterMask TA
 	cd ../ 
     mv -v $dir PROCESSED_INITIAL/
 done
