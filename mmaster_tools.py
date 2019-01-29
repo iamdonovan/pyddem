@@ -1,5 +1,5 @@
-from __future__ import print_function
-from future_builtins import zip
+#from __future__ import print_function
+#from future_builtins import zip
 from functools import partial
 import os
 import sys
@@ -28,7 +28,7 @@ from pybob.GeoImg import GeoImg
 from pybob.image_tools import nanmedian_filter
 from pybob.plot_tools import plot_shaded_dem
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-
+from IPython import embed
 
 def make_mask(inpoly, pts, raster_out=False):
     """
@@ -345,6 +345,7 @@ def preprocess(mst_dem, slv_dem, glacmask=None, landmask=None, work_dir='.', out
     corr.shift(shift_params[0], shift_params[1])
     corr.write(os.path.sep.join([out_dir, '{}_CORR_adj.tif'.format(ast_name)]), dtype=np.uint8)
 
+    
     plt.close("all")
 
     return mst_coreg, slv_coreg, shift_params
@@ -548,8 +549,8 @@ def get_fit_variables(mst_dem, slv_dem, xxn, pts, xxb=None):
         xx2 = np.nan
     else:
         xx2 = np.squeeze(xx2[~mynan])
-
-    return xx, dH, grp_xx, grp_dH, xx2
+        
+    return xx, dH, grp_xx, grp_dH, xx2, grp_sts
 
 
 def fitfun_polynomial(xx, params):
@@ -779,11 +780,12 @@ def plot_bias(xx, dH, grp_xx, grp_dH, title, pp, pmod=None, smod=None, plotmin=N
         plt.plot(grp_xx, grp_dH, '-', ms=2, color='0.15', label="Grouped Median")
     else:
         plt.plot(grp_xx, grp_dH, '^', ms=1, color='0.5', rasterized=True, fillstyle='full', label="Grouped Median")
-
+        
+    xx2 = np.linspace(np.min(grp_xx), np.max(grp_xx), 1000)    
     if pmod is not None:
-        plt.plot(grp_xx, pmod, 'r-', ms=2, label="Basic Fit")
+        plt.plot(xx2, pmod, 'r-', ms=2, label="Basic Fit")
     if smod is not None:
-        plt.plot(grp_xx, smod, 'm-', ms=2, label="SumOfSines-Fit")
+        plt.plot(xx2, smod, 'm-', ms=2, label="SumOfSines-Fit")
 
     plt.plot(grp_xx, np.zeros(grp_xx.size), 'k-', ms=1)
 
@@ -795,11 +797,11 @@ def plot_bias(xx, dH, grp_xx, grp_dH, title, pp, pmod=None, smod=None, plotmin=N
     # plt.axis([0, 360, -200, 200])
     plt.xlabel(title + ' track distance [meters]')
     plt.ylabel('dH [meters]')
-    plt.legend(loc=0)
+    plt.legend(loc=1)
     #    plt.legend(('Raw [samples]', 'Grouped Median', 'Fit'), loc=1)
 
     if txt is not None:
-        plt.text(0.05, 0.15, txt, fontsize=12, fontweight='bold', color='black',
+        plt.text(0.05, 0.05, txt, fontsize=12, fontweight='bold', color='black',
                  family='monospace', transform=plt.gca().transAxes)
 
     # plt.show()
@@ -872,7 +874,7 @@ def correct_cross_track_bias(mst_dem, slv_dem, inang, pp, pts=False):
 
     # arrange the dependent (dH) and independent variables (ANGLE) into vectors
     # ALSO, filters the dH > threshold (40), and provides grouped statistics... 
-    xx, dH, grp_xx, grp_dH, _ = get_fit_variables(mst_dem, slv_dem, xxr, pts)
+    xx, dH, grp_xx, grp_dH, _, _ = get_fit_variables(mst_dem, slv_dem, xxr, pts)
 
     # #
     # Need conditional to check for large enough sample size... ?
@@ -880,9 +882,10 @@ def correct_cross_track_bias(mst_dem, slv_dem, inang, pp, pts=False):
 
     # POLYNOMIAL FITTING - here using my defined robust polynomial fitting
     #    pcoef, myorder = robust_polynomial_fit(grp_xx, grp_dH)
+    xx2 = np.linspace(np.min(grp_xx), np.max(grp_xx), 1000)
     pcoef, myorder = robust_polynomial_fit(xx, dH)
     polymod = fitfun_polynomial(xx, pcoef)
-    polymod_grp = fitfun_polynomial(grp_xx, pcoef)
+    polymod_grp = fitfun_polynomial(xx2, pcoef)
     polyres = RMSE(dH - polymod)
     print("Cross track robust Polynomial RMSE (all data): ", polyres)
 
@@ -907,19 +910,30 @@ def correct_cross_track_bias(mst_dem, slv_dem, inang, pp, pts=False):
     return slv_dem, out_corr, pcoef
 
 
-def correct_along_track_bias(mst_dem, slv_dem, inangN, inangB, pp, pts):
+def correct_along_track_bias(mst_dem, slv_dem, ang_mapN, ang_mapB, pp, pts):
     # calculate along/across track coordinates
     # myang = np.deg2rad(np.multiply(inang,np.multiply(dH,0)+1))# generate synthetic angle image for testing
-    xxn_mat, xxb_mat = get_atrack_coord(slv_dem, inangN,
-                                        inangB)  # across,along track coordinates calculated from angle map
+    xxn_mat, xxb_mat = get_atrack_coord(slv_dem, ang_mapN,
+                                        ang_mapB)  # across,along track coordinates calculated from angle map
 
     # arrange the dependent (dH) and independent variables (ANGLE) into vectors
     # ALSO, filters the dH > threshold (40), and provides grouped statistics... 
-    xxn, dH, grp_xx, grp_dH, xxb = get_fit_variables(mst_dem, slv_dem, xxn_mat, pts, xxb=xxb_mat)
+    xxn, dH, grp_xx, grp_dH, xxb, grp_stats = get_fit_variables(mst_dem, slv_dem, xxn_mat, pts, xxb=xxb_mat)
+    
+    # # # # # # # # # # #
+    # Need conditional to check for enough sample size... HERE it is.. ->
+    xxid = make_group_id(xxn, 500)
+    # percent sample size for the groups
+    psize = np.divide(grp_stats['count'].values,np.sum(grp_stats['count'].values))*100
+    pthresh = 0.1
+    # create mask for dh and xx values
+    myix = np.isin(xxid,grp_xx[psize<pthresh],invert=True).flatten()
+    # mask group values
+    grp_dH = np.delete(grp_dH,[psize<pthresh])
+    grp_xx = np.delete(grp_xx,[psize<pthresh])
+    # # # # # # # # # # #
+    
     # #
-    # Need conditional to check for enough sample size... 
-    # #
-
     yy = dH
     # updated to print only the non-nan size of xxn
     print("Original Sample Size: ", np.where(np.isfinite(xxn))[0].size)
@@ -928,7 +942,8 @@ def correct_along_track_bias(mst_dem, slv_dem, inangN, inangB, pp, pts):
     mykeep = np.logical_and.reduce((np.isfinite(yy), 
                                     np.isfinite(xxn), 
                                     np.isfinite(xxb), 
-                                    (np.abs(yy) < np.nanstd(yy) * 2.5)))
+                                    (np.abs(yy) < np.nanstd(yy) * 2.5),
+                                    myix))
     xxn = np.squeeze(xxn[mykeep])
     xxb = np.squeeze(xxb[mykeep])
     yy = np.squeeze(yy[mykeep])
@@ -996,8 +1011,8 @@ def correct_along_track_bias(mst_dem, slv_dem, inangN, inangB, pp, pts):
     tt2 = time.time()
     print("Sum of Sinses fitting finished in : ", (tt2-tt1), " seconds")
 
-    xxn2 = np.linspace(np.min(xxn[mysamp]), np.max(xxn[mysamp]), grp_xx.size)
-    xxb2 = np.linspace(np.min(xxb[mysamp]), np.max(xxb[mysamp]), grp_xx.size)
+    xxn2 = np.linspace(np.min(xxn), np.max(xxn), 1000)
+    xxb2 = np.linspace(np.min(xxb), np.max(xxb), 1000)
     mypred0 = fitfun_sumofsin(xxn2, init_results.x)
     mypred = fitfun_sumofsin_2angle(xxn2, xxb2, myresults.x)
     plt.plot(xxn2, mypred0, '-', ms=2, color='k', rasterized=True, fillstyle='full')
