@@ -67,22 +67,32 @@ def main():
         pool.close()
 
     else:
+        odir = os.getcwd()
         for indir in args.indir:
             print('Running bias correction on {}'.format(indir))
             os.chdir(indir)
-            print(os.getcwd())
+            #print(os.getcwd())
             if args.slavedem is None:
                 flist = glob('AST*_Z.tif')
-                args.slavedem = flist[0]
+                this_slavedem = flist[0]
                 mmaster_bias_removal(args.masterdem,
-                                     args.slavedem,
+                                     this_slavedem,
                                      glacmask=args.exc_mask,
                                      landmask=args.inc_mask,
                                      out_dir=args.outdir,
                                      pts=args.points,
                                      return_geoimg=False,
                                      write_log=args.log)
-           
+            else:
+                mmaster_bias_removal(args.masterdem,
+                                     args.slavedem,
+                                     glaciermask=args.exc_mask,
+                                     landmask=args.inc_mask,
+                                     out_dir=args.outdir,
+                                     pts=args.points,
+                                     return_geoimg=False,
+                                     write_log=args.log)
+            os.chdir(odir)
         
 
 if __name__ == "__main__":
