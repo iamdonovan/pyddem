@@ -83,18 +83,24 @@ def main():
     # now that the individual scenes are sorted into "strips",
     # we can create "strip" and "single" folders
     print('Moving strips to individual folders.')
-    mkdir_p('strips')
-    mkdir_p('singles')
+    #mkdir_p('strips')
+    #mkdir_p('singles')
+    mkdir_p('sorted')
 
     for s in striplist:
+        mkdir_p(os.path.sep.join('sorted', s[0][0:25]))
         if len(s) == 1:
-            shutil.move(s[0] + '.zip', 'singles')
-            shutil.move(s[0] + '.zip.met', 'singles')
+            # shutil.move(s[0] + '.zip', 'singles')
+            # shutil.move(s[0] + '.zip.met', 'singles')
+            shutil.move(s[0] + '.zip', os.path.sep.join('sorted', s[0][0:25]))
+            shutil.move(s[0] + '.zip.met', os.path.sep.join('sorted', s[0][0:25]))
         else:
-            mkdir_p(os.path.join('strips', s[0][0:25]))
+            #mkdir_p(os.path.join('strips', s[0][0:25]))
             for ss in s:                
-                shutil.copy(ss + '.zip', os.path.join('strips', s[0][0:25]))
-                shutil.copy(ss + '.zip.met', os.path.join('strips', s[0][0:25]))
+                # shutil.copy(ss + '.zip', os.path.join('strips', s[0][0:25]))
+                # shutil.copy(ss + '.zip.met', os.path.join('strips', s[0][0:25]))
+                shutil.copy(ss + '.zip', os.path.join('sorted', s[0][0:25]))
+                shutil.copy(ss + '.zip.met', os.path.join('sorted', s[0][0:25]))                
     # now, clean up the current folder.
     for f in glob('*.zip*'):
         os.remove(f)
