@@ -28,7 +28,7 @@ from pybob.GeoImg import GeoImg
 from pybob.image_tools import nanmedian_filter
 from pybob.plot_tools import plot_shaded_dem
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from IPython import embed
+
 
 def make_mask(inpoly, pts, raster_out=False):
     """
@@ -820,7 +820,8 @@ def final_histogram(dH0, dH1, dH2, dHfinal, pp):
     dH0 = np.squeeze(np.asarray(dH0[ np.logical_and.reduce((np.isfinite(dH0), (np.abs(dH0) < np.nanstd(dH0) * 3)))]))
     dH1 = np.squeeze(np.asarray(dH1[ np.logical_and.reduce((np.isfinite(dH1), (np.abs(dH1) < np.nanstd(dH1) * 3)))]))
     dH2 = np.squeeze(np.asarray(dH2[ np.logical_and.reduce((np.isfinite(dH2), (np.abs(dH2) < np.nanstd(dH2) * 3)))]))
-    dHfinal = np.squeeze(np.asarray(dHfinal[ np.logical_and.reduce((np.isfinite(dHfinal), (np.abs(dHfinal) < np.nanstd(dHfinal) * 3)))]))
+    dHfinal = np.squeeze(np.asarray(dHfinal[np.logical_and.reduce((np.isfinite(dHfinal), 
+                                            (np.abs(dHfinal) < np.nanstd(dHfinal) * 3)))]))
 
     if dH0[np.isfinite(dH0)].size < 2000:
         mybins = 40
