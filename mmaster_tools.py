@@ -1006,7 +1006,7 @@ def correct_along_track_bias(mst_dem, slv_dem, ang_mapN, ang_mapB, pp, pts):
                             bounds=optimize.Bounds(lbb, ubb),
                             options={"ftol": 1E-4})
     myresults = optimize.basinhopping(costfun_sumofsin, init_results.x, disp=True,
-                                      T=500, niter_success=10,
+                                      T=1000, niter_success=20,
                                       minimizer_kwargs=minimizer_kwargs)
     myresults = myresults.lowest_optimization_result
     tt2 = time.time()
