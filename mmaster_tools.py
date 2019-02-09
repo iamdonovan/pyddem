@@ -331,6 +331,8 @@ def preprocess(mst_dem, slv_dem, glacmask=None, landmask=None, work_dir='.', out
     coreg_dir = os.path.sep.join([out_dir, 'coreg'])
     mst_coreg, slv_coreg, shift_params = dem_coregistration(mst_dem, slv_name, glaciermask=glacmask,
                                                             landmask=landmask, outdir=coreg_dir, pts=pts)
+    if shift_params == -1:
+        return mst_coreg, slv_coreg, shift_params
     #    print(slv_coreg.filename)
     # remove coreg folder, save slv as *Zadj1.tif, but save output.pdf
     #    shutil.move(os.path.sep.join([out_dir, 'CoRegistration_Results.pdf']),
@@ -1160,6 +1162,19 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
     # pre-processing steps (co-registration,Correlation_masking)
     mst_coreg, slv_coreg, shift_params = preprocess(mst_dem, slv_dem, glacmask=glacmask, landmask=landmask,
                                                     work_dir='.', out_dir=out_dir, pts=pts)
+    if shift_params == -1:
+        print("Too few points for initial co-registration. Exiting.")
+        clean_coreg_dir(out_dir, 'coreg')
+        if write_log:
+            sys.stdout = sys.__stdout__
+            sys.stderr = sys.__stderr__
+            logfile.close()
+            errfile.close()
+        os.chdir(orig_dir)
+        if return_geoimg:
+            return slv_coreg, mst_coreg
+        else:
+            return 
     clean_coreg_dir(out_dir, 'coreg')
 
     # OPEN and start the Results.pdf
@@ -1278,7 +1293,7 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
     mst_coreg, slv_adj_coreg, shift_params2 = dem_coregistration(mst_dem, slv_coreg_xcorr_acorr,
                                                                  glaciermask=glacmask, landmask=landmask,
                                                                  outdir=recoreg_outdir, pts=pts)
-
+    clean_coreg_dir(out_dir, 're-coreg')
     orig_slv.shift(shift_params2[0], shift_params2[1])
     orig_slv.img = orig_slv.img + shift_params2[2]
     orig_slv.write(os.path.splitext(slv_dem)[0] + "_adj_XAJ_final.tif", out_folder=out_dir)
@@ -1288,9 +1303,6 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
     
     print("Fin.")
 
-    if return_geoimg:
-        return slv_coreg_xcorr_acorr, mst_coreg
-
     if write_log:
         sys.stdout = sys.__stdout__
         sys.stderr = sys.__stderr__
@@ -1298,3 +1310,5 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
         errfile.close()
 
     os.chdir(orig_dir)
+    if return_geoimg:
+        return slv_coreg_xcorr_acorr, mst_coreg
