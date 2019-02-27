@@ -1,6 +1,5 @@
-# First extract the GeoTiff L1A to a folder named SceneName/RawData (ex AST_L1A_00302212004225011_20170204145459_24750/RawData),
-# then from the folder where **SCENE_FOLDER** (ex AST_L1A_00302212004225011_20170204145459_24750/) is situated run: 
-# WorkFlowASTER_onescene.sh -s AST_L1A_00302212004225011_20170204145459_24750 -z "4 +north"
+# Put all the L1A zip files in a folder 'AST_L1A_MyStrip', then, from the folder above, call something like: 
+# WorkFlowASTER_onestrip.sh -s AST_L1A_MyStrip -z "4 +north"
 # extra options :  -t 30 -n false -c 0.7 -w false -f 1
 
 #Fixed symboles
@@ -19,27 +18,27 @@ ZoomF=1
 RESTERR=30
 CorThr=0.7
 SzW=5
-nameWaterMask=false
+water_mask=false
 do_ply=false
 do_angle=false
 NoCorDEM=false
 fitVersion=1
 
-while getopts "s:z:c:q:w:n:f:t:y:a:i:h" opt; do
+while getopts "s:z:c:q:wnf:t:y:ai:h" opt; do
   case $opt in
     h)
       echo "Run the second step in the MMASTER processing chain."
-      echo "usage: WorkFlowASTER_onescene.sh -s SCENENAME -z 'UTMZONE' -f ZOOMF -t RESTERR -w false -h"
-      echo "    -s SCENENAME: Aster scenename/folder where data is located."
+      echo "usage: WorkFlowASTER_onestrip.sh -s SCENENAME -z 'UTMZONE' -f ZOOMF -t RESTERR -w false -h"
+      echo "    -s SCENENAME: Folder where zips of stips are located."
       echo "    -z UTMZONE  : UTM Zone of area of interest. Takes form 'NN +north(south)'"
       echo "    -c CorThr   : Correlation Threshold for estimates of Z min and max (optional, default : 0.7)"
       echo "    -q SzW      : Size of the correlation window in the last step (optional, default : 4, mean 9*9)"
       echo "    -w mask     : Name of shapefile to skip masked areas (usually water, this is optional, default : none)."
-      echo "    -n NoCorDEM : Compute DEM with the uncorrected 3B image (computing with correction as well, def false)"
+      echo "    -n NoCorDEM : Compute DEM with the uncorrected 3B image (computing with correction as well)"
       echo "    -f ZOOMF    : Run with different final resolution   (optional; default: 1)"
       echo "    -t RESTERR  : Run with different terrain resolution (optional; default: 30)"
-      echo "    -y do_ply   : Write point cloud (DEM drapped with ortho in ply, def false))"
-      echo "    -a do_angle : Compute track angle along orbit (def false)"
+      echo "    -y do_ply   : Write point cloud (DEM drapped with ortho in ply)"
+      echo "    -a do_angle : Compute track angle along orbit"
       echo "    -i fitVersion : Version of Cross-track FitASTER to be used (Def 1, 2 availiable)"
       echo "    -h          : displays this message and exits."
       echo " "
@@ -49,12 +48,9 @@ while getopts "s:z:c:q:w:n:f:t:y:a:i:h" opt; do
       NoCorDEM=$OPTARG
       ;;
     a)
-      echo "Computing projected orbit angles"
       do_angle=true
-      ;; 
+      ;;  
     y)
-	
-      echo "Making ply output: $OPTARG"
       do_ply=$OPTARG
       ;;    
     s)
@@ -74,15 +70,15 @@ while getopts "s:z:c:q:w:n:f:t:y:a:i:h" opt; do
       echo "SzW set to $SzW"
       ;;
     w)
-      echo "Water mask selected: " $OPTARG
+e     echo "Water mask selected: " $OPTARG
 	  nameWaterMask=$OPTARG
+      ;;
+    f)
+      ZoomF=$OPTARG
       ;;
     i)
       echo "ASTER Fit Version: " $OPTARG
 	  fitVersion=$OPTARG
-      ;;
-    f)
-      ZoomF=$OPTARG
       ;;
     t)
       RESTERR=$OPTARG
@@ -105,31 +101,36 @@ cd $name
 pwd
 
 # unziping data and archiving files
-if [ ! -d "RawData" ]; then 
-    mkdir RawData
-    mkdir zips
-    find ./ -maxdepth 1 -name "*.zip" | while read filename; do
+mkdir RawData
+mkdir zips
+nscenes=$(ls *.zip | wc -l)
+find ./ -maxdepth 1 -name "*.zip" | while read filename; do
         f=$(basename "$filename")
         unzip $f -d "RawData"
         mv "$f" "zips"
-    done  
+done  
 
-    echo "Moved and extracted zip files"
+echo "Moved and extracted zip files"
 
-    find ./ -maxdepth 1 -name "*.met" | while read filename; do
-        f=$(basename "$filename")
-        mv "$f" "zips"
-    done  
+find ./ -maxdepth 1 -name "*.met" | while read filename; do
+    f=$(basename "$filename")
+    mv "$f" "zips"
+done  
 
-    echo "Moved met files"
-
-    cd RawData
-else
-    cd RawData
-fi
+echo "Moved met files"
 
 pwd
-mm3d SateLib ASTERGT2MM $name
+cd RawData
+pwd
+if [ "$nscenes" -gt "1" ]; then
+    mm3d Satelib ASTERStrip2MM AST_L1A.* $name
+else
+    for f in $(ls *.*); do 
+        split=($(echo $f | sed 's/\./ /')); 
+        mv -v $f ${split[0]:0:25}.${split[1]}; 
+    done
+    mm3d SateLib ASTERGT2MM $name
+fi
 cd ..
 
 mm3d SateLib Aster2Grid $name$Bx 20 "+proj=utm +zone=$UTM +datum=WGS84 +units=m +no_defs" HMin=-500 HMax=9000 expDIMAP=1 expGrid=1
@@ -174,8 +175,6 @@ mm3d SateLib Aster2Grid "FalseColor_$name.xml" $NbLvl "+proj=utm +zone=$UTM +dat
 
 mm3d MMTestOrient $name$Bt $name$Nt GRIBin PB=1 MOri=GRID ZoomF=1 ZInc=$Inc ZMoy=$Mean
 
-
-
 # if we want to compute the uncorrected DEM
 if [ "$NoCorDEM" = true ]; then #check variable name!
 mm3d Malt Ortho ".*$name(|_3N|_3B).tif" GRIBin ImMNT="$name(_3N|_3B).tif" ImOrtho="FalseColor_$name.tif" MOri=GRID ZInc=$Inc ZMoy=$Mean ZoomF=1 ZoomI=32 ResolTerrain=30 NbVI=2 EZA=1 DefCor=0 Regul=0.1 ResolOrtho=2 DirMEC=MEC-NoCor
@@ -205,33 +204,49 @@ fi
 cd MEC-Malt
 mv Correl_STD-MALT_Num_8.tif Correl_STD-MALT_Num_8_FullRes.tif
 cp Z_Num9_DeZoom1_STD-MALT.tfw Correl_STD-MALT_Num_8_FullRes.tfw
-gdal_translate -tr $RESTERR $RESTERR -r cubicspline -a_srs "+proj=utm +zone=$UTM +datum=WGS84 +units=m +no_defs" Correl_STD-MALT_Num_8_FullRes.tif Correl_STD-MALT_Num_8.tif
+gdal_translate -tr $RESTERR $RESTERR -a_srs "+proj=utm +zone=$UTM +datum=WGS84 +units=m +no_defs" Correl_STD-MALT_Num_8_FullRes.tif Correl_STD-MALT_Num_8.tif
+
 mv AutoMask_STD-MALT_Num_8.tif AutoMask_STD-MALT_Num_8_FullRes.tif
 cp Z_Num9_DeZoom1_STD-MALT.tfw AutoMask_STD-MALT_Num_8_FullRes.tfw
 gdal_translate -tr $RESTERR $RESTERR -r cubicspline -a_srs "+proj=utm +zone=$UTM +datum=WGS84 +units=m +no_defs" AutoMask_STD-MALT_Num_8_FullRes.tif AutoMask_STD-MALT_Num_8.tif
+
+if [ -f Z_Num9_DeZoom1_STD-MALT_Tile_0_0.tif ]; then
+	mosaic_micmac_tiles.py -filename 'Z_Num9_DeZoom1_STD-MALT' 
+fi
 mv Z_Num9_DeZoom1_STD-MALT.tif Z_Num9_DeZoom1_STD-MALT_FullRes.tif
 mv Z_Num9_DeZoom1_STD-MALT.tfw Z_Num9_DeZoom1_STD-MALT_FullRes.tfw
 mv Z_Num9_DeZoom1_STD-MALT.xml Z_Num9_DeZoom1_STD-MALT_FullRes.xml
+
 gdal_translate -tr $RESTERR $RESTERR -r cubicspline -a_srs "+proj=utm +zone=$UTM +datum=WGS84 +units=m +no_defs" -co TFW=YES Z_Num9_DeZoom1_STD-MALT_FullRes.tif Z_Num9_DeZoom1_STD-MALT.tif
 cd ..
 
 if [ "$do_angle" = true ]; then
 	# computing orbit angles on DEM
 	mm3d SateLib ASTERProjAngle MEC-Malt/Z_Num9_DeZoom1_STD-MALT MEC-Malt/AutoMask_STD-MALT_Num_8.tif $name$N
+	if [ -f TrackAngleMap_3N_Tile_0_0.tif ]; then
+		mosaic_micmac_tiles.py -filename 'TrackAngleMap_3N'
+	fi
 	cp MEC-Malt/Z_Num9_DeZoom1_STD-MALT.tfw TrackAngleMap_nonGT.tfw
 	mv TrackAngleMap.tif TrackAngleMap_nonGT.tif
 	gdal_translate -a_srs "+proj=utm +zone=$UTM +datum=WGS84 +units=m +no_defs" -a_nodata 0 TrackAngleMap_nonGT.tif TrackAngleMap_3N.tif
 	rm TrackAngleMap_nonGT*
 	mm3d SateLib ASTERProjAngle MEC-Malt/Z_Num9_DeZoom1_STD-MALT MEC-Malt/AutoMask_STD-MALT_Num_8.tif $name$B
+	if [ -f TrackAngleMap_3B_Tile_0_0.tif ]; then
+		mosaic_micmac_tiles.py -filename 'TrackAngleMap_3B'
+	fi
 	cp MEC-Malt/Z_Num9_DeZoom1_STD-MALT.tfw TrackAngleMap_nonGT.tfw
 	mv TrackAngleMap.tif TrackAngleMap_nonGT.tif
 	gdal_translate -a_srs "+proj=utm +zone=$UTM +datum=WGS84 +units=m +no_defs" -a_nodata 0 TrackAngleMap_nonGT.tif TrackAngleMap_3B.tif
 	rm TrackAngleMap_nonGT*
 fi
 
-
 cd Ortho-MEC-Malt
+# if there are no tiles, we have nothing to do.
+# not sure if we want to hard-code that the tiles will always be Nx1?
+if [ -f Orthophotomosaic_Tile_0_0.tif ]; then
+	mosaic_micmac_tiles.py -filename 'Orthophotomosaic'
+fi
 mv Orthophotomosaic.tif Orthophotomosaic_FullRes.tif
 mv Orthophotomosaic.tfw Orthophotomosaic_FullRes.tfw
-gdal_translate -tr 15 15 -r cubicspline -a_srs "+proj=utm +zone=$UTM +datum=WGS84 +units=m +no_defs" Orthophotomosaic_FullRes.tif Orthophotomosaic.tif
+gdal_translate -tr 15 15 -r bilinear -a_srs "+proj=utm +zone=$UTM +datum=WGS84 +units=m +no_defs" Orthophotomosaic_FullRes.tif Orthophotomosaic.tif
 cd ..

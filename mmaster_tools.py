@@ -28,7 +28,13 @@ from pybob.GeoImg import GeoImg
 from pybob.image_tools import nanmedian_filter
 from pybob.plot_tools import plot_shaded_dem
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from IPython import embed
+
+
+def clean_coreg_dir(out_dir, cdir):
+    search_str = glob(os.path.sep.join([out_dir, cdir, '*.tif']))
+    for f in search_str:
+        os.remove(f)
+
 
 def make_mask(inpoly, pts, raster_out=False):
     """
@@ -340,7 +346,7 @@ def preprocess(mst_dem, slv_dem, glacmask=None, landmask=None, work_dir='.', out
     corr = GeoImg(ast_name + '_CORR.tif')
 
     ortho.shift(shift_params[0], shift_params[1])
-    ortho.write(os.path.sep.join([out_dir, '{}_V123_adj.tif'.format(ast_name)]))
+    ortho.write(os.path.sep.join([out_dir, '{}_V123_adj.tif'.format(ast_name)]), dtype=np.int8)
 
     corr.shift(shift_params[0], shift_params[1])
     corr.write(os.path.sep.join([out_dir, '{}_CORR_adj.tif'.format(ast_name)]), dtype=np.uint8)
@@ -427,11 +433,11 @@ def calculate_dH(mst_dem, slv_dem, pts):
         dH.mask(mask)
     else:
         # NEED TO CHECK THE MASKING
-        slave_pts = slv_dem.raster_points(mst_dem.xy, nsize=3, mode='cubic')
+        slave_pts = slv_dem.raster_points2(mst_dem.xy, nsize=3, mode='cubic')
         dH = mst_dem.elev - slave_pts
 
         myslope = get_slope(slv_dem)
-        slope_pts = myslope.raster_points(mst_dem.xy, nsize=3, mode='cubic')
+        slope_pts = myslope.raster_points2(mst_dem.xy, nsize=3, mode='cubic')
 
         fmask = np.logical_or.reduce((np.greater(np.abs(dH), 100), np.less(slope_pts, 0.5), np.greater(slope_pts, 25)))
 
@@ -527,11 +533,11 @@ def get_fit_variables(mst_dem, slv_dem, xxn, pts, xxb=None):
             dH = dH.compressed()
     elif pts:
         XXR = slv_dem.copy(new_raster=xxn)
-        xx = XXR.raster_points(mst_dem.xy, nsize=3, mode='cubic')
+        xx = XXR.raster_points2(mst_dem.xy, nsize=3, mode='cubic')
         dH = calculate_dH(mst_dem, slv_dem, pts)
         if xxb is not None:
             XXR2 = slv_dem.copy(new_raster=xxb)
-            xx2 = XXR2.raster_points(mst_dem.xy, mode='cubic')
+            xx2 = XXR2.raster_points2(mst_dem.xy, mode='cubic')
     # Mask and filter (remove outliers)
     mynan = np.logical_or.reduce((np.invert(np.isfinite(dH)),
                                   np.invert(np.isfinite(xx)),
@@ -753,6 +759,24 @@ def costfun_sumofsin(p, xxn, yy, xxb=None):
     # SOFT-L1 loss function  with SCALING
     return myerr
 
+def costfun_sumofsin_jitter(p, xxn, yy, xxb=None):
+    if xxb is not None:
+        myval = fitfun_sumofsin_2angle(xxn, xxb, p)
+    else:
+        myval = fitfun_sumofsin(xxn, p)
+    # DEFINE THE COST FUNCTION
+    #    myerr = RMSE(yy - myval)
+    #    myerr = nmad(yy - myval)
+    #    myerr = np.sum(np.abs(yy-myval))    # called MAE or L1 loss function
+    #    myerr = np.linalg.norm(yy-myval)
+    #    myerr = np.sqrt(np.sum((yy-myval) ** 2))
+    #    myerr = huber_loss(yy-myval)    # HUBER loss function (reduce the weight of outliers)
+    #    myerr = np.sum((np.sqrt(1+np.square(yy-myval))-1))    # SOFT-L1 loss function (reduce the weight of outliers)
+    myscale = 0.1
+    myerr = np.sum(np.square(myscale) * soft_loss(np.square(np.divide(yy - myval, myscale))))
+    #    myerr = np.sum( np.square(myscale)*2*(np.sqrt(1+np.square(np.divide(yy-myval,myscale)))-1) ) 
+    # SOFT-L1 loss function  with SCALING
+    return myerr
 
 def plot_bias(xx, dH, grp_xx, grp_dH, title, pp, pmod=None, smod=None, plotmin=None, txt=None):
     """
@@ -782,11 +806,11 @@ def plot_bias(xx, dH, grp_xx, grp_dH, title, pp, pmod=None, smod=None, plotmin=N
     else:
         plt.plot(grp_xx, grp_dH, '^', ms=1, color='0.5', rasterized=True, fillstyle='full', label="Grouped Median")
         
-    xx2 = np.linspace(np.min(grp_xx), np.max(grp_xx), 1000)    
+    # xx2 = np.linspace(np.min(grp_xx), np.max(grp_xx), 1000)
     if pmod is not None:
-        plt.plot(xx2, pmod, 'r-', ms=2, label="Basic Fit")
+        plt.plot(pmod[0], pmod[1], 'r-', ms=2, label="Basic Fit")
     if smod is not None:
-        plt.plot(xx2, smod, 'm-', ms=2, label="SumOfSines-Fit")
+        plt.plot(smod[0], smod[1], 'm-', ms=2, label="SumOfSines-Fit")
 
     plt.plot(grp_xx, np.zeros(grp_xx.size), 'k-', ms=1)
 
@@ -806,7 +830,7 @@ def plot_bias(xx, dH, grp_xx, grp_dH, title, pp, pmod=None, smod=None, plotmin=N
                  family='monospace', transform=plt.gca().transAxes)
 
     # plt.show()
-    pp.savefig(fig, bbox_inches='tight', dpi=200)
+    pp.savefig(fig, dpi=300)
 
 
 def final_histogram(dH0, dH1, dH2, dHfinal, pp):
@@ -820,7 +844,8 @@ def final_histogram(dH0, dH1, dH2, dHfinal, pp):
     dH0 = np.squeeze(np.asarray(dH0[ np.logical_and.reduce((np.isfinite(dH0), (np.abs(dH0) < np.nanstd(dH0) * 3)))]))
     dH1 = np.squeeze(np.asarray(dH1[ np.logical_and.reduce((np.isfinite(dH1), (np.abs(dH1) < np.nanstd(dH1) * 3)))]))
     dH2 = np.squeeze(np.asarray(dH2[ np.logical_and.reduce((np.isfinite(dH2), (np.abs(dH2) < np.nanstd(dH2) * 3)))]))
-    dHfinal = np.squeeze(np.asarray(dHfinal[ np.logical_and.reduce((np.isfinite(dHfinal), (np.abs(dHfinal) < np.nanstd(dHfinal) * 3)))]))
+    dHfinal = np.squeeze(np.asarray(dHfinal[np.logical_and.reduce((np.isfinite(dHfinal), 
+                                            (np.abs(dHfinal) < np.nanstd(dHfinal) * 3)))]))
 
     if dH0[np.isfinite(dH0)].size < 2000:
         mybins = 40
@@ -898,7 +923,7 @@ def correct_cross_track_bias(mst_dem, slv_dem, inang, pp, pts=False):
     #    print("Cross track standard Polynomial RMSE (all data): ", polyres)
 
     mytext = "Polynomial order: " + np.str(myorder)
-    plot_bias(xx, dH, grp_xx, grp_dH, 'Cross', pp, pmod=polymod_grp, txt=mytext)
+    plot_bias(xx, dH, grp_xx, grp_dH, 'Cross', pp, pmod=(xx2, polymod_grp), txt=mytext)
 
     # Generate correction for DEM
     #    out_corr = poly.polyval(xxr, pcoef)
@@ -911,35 +936,30 @@ def correct_cross_track_bias(mst_dem, slv_dem, inang, pp, pts=False):
     return slv_dem, out_corr, pcoef
 
 
-def correct_along_track_bias(mst_dem, slv_dem, ang_mapN, ang_mapB, pp, pts):
-    # calculate along/across track coordinates
-    # myang = np.deg2rad(np.multiply(inang,np.multiply(dH,0)+1))# generate synthetic angle image for testing
-    xxn_mat, xxb_mat = get_atrack_coord(slv_dem, ang_mapN,
-                                        ang_mapB)  # across,along track coordinates calculated from angle map
+def get_filtered_along_track(mst_dem, slv_dem, ang_maps, pts):
+    ang_mapN, ang_mapB = ang_maps
+    # across,along track coordinates calculated from angle map
+    xxn_mat, xxb_mat = get_atrack_coord(slv_dem, ang_mapN, ang_mapB)
 
     # arrange the dependent (dH) and independent variables (ANGLE) into vectors
-    # ALSO, filters the dH > threshold (40), and provides grouped statistics... 
+    # ALSO, filters the dH > threshold (40), and provides grouped statistics...     
     xxn, dH, grp_xx, grp_dH, xxb, grp_stats = get_fit_variables(mst_dem, slv_dem, xxn_mat, pts, xxb=xxb_mat)
-    
+
     # # # # # # # # # # #
     # Need conditional to check for enough sample size... HERE it is.. ->
     xxid = make_group_id(xxn, 500)
     # percent sample size for the groups
     psize = np.divide(grp_stats['count'].values,np.sum(grp_stats['count'].values))*100
     pthresh = 0.1
-    # create mask for dh and xx values
-    myix = np.isin(xxid,grp_xx[psize<pthresh],invert=True).flatten()
+    # create mask for dh and xx values    
+    myix = np.isin(xxid, grp_xx[psize < pthresh], invert=True).flatten()
     # mask group values
     grp_dH = np.delete(grp_dH,[psize<pthresh])
     grp_xx = np.delete(grp_xx,[psize<pthresh])
     # # # # # # # # # # #
     
-    # #
     yy = dH
-    # updated to print only the non-nan size of xxn
     print("Original Sample Size: ", np.where(np.isfinite(xxn))[0].size)
-    #    mykeep = np.isfinite(yy) & np.isfinite(xxn) & np.isfinite(xxb) & (np.abs(yy) < np.nanstd(yy) * 3)
-    #    mykeep = np.asarray(np.isfinite(yy) and np.isfinite(xxn) and np.isfinite(xxb) and (np.abs(yy) < np.nanstd(yy) * 3))
     mykeep = np.logical_and.reduce((np.isfinite(yy), 
                                     np.isfinite(xxn), 
                                     np.isfinite(xxb), 
@@ -948,56 +968,67 @@ def correct_along_track_bias(mst_dem, slv_dem, ang_mapN, ang_mapB, pp, pts):
     xxn = np.squeeze(xxn[mykeep])
     xxb = np.squeeze(xxb[mykeep])
     yy = np.squeeze(yy[mykeep])
-
-    # should be the right size, since we've filtered out the nans in the above steps.
     print("Filtered Sample Size: ", xxn.size)
+    
+    return grp_xx, grp_dH, xxn, xxb, yy, xxn_mat, xxb_mat
+
+
+def correct_along_track_bias(mst_dem, slv_dem, ang_mapN, ang_mapB, pp, pts):
+    # calculate along/across track coordinates
+    # myang = np.deg2rad(np.multiply(inang,np.multiply(dH,0)+1))# generate synthetic angle image for testing
+    grp_xx, grp_dH, xxn, xxb, yy, xxn_mat, xxb_mat = get_filtered_along_track(mst_dem, slv_dem, 
+                                                                              (ang_mapN, ang_mapB), pts)
     # sampsize = np.int(np.floor(xx.size*0.25)) # for use as a percentage
-    sampsize = min(int(0.15 * xxn.size), 25000)
+    sampsize = min(int(0.15 * xxn.size), 15000)
     if xxn.size > sampsize:
         mysamp = np.random.randint(0, xxn.size, sampsize)
     else:
         mysamp = np.arange(0, xxn.size)
     
-    fig = plt.figure(figsize=(7, 5), dpi=200)
+    #fig = plt.figure(figsize=(7, 5), dpi=200)
     # fig.suptitle(title, fontsize = 14)
-    plt.plot(xxn[mysamp], yy[mysamp], '^', ms=0.5, color='0.5', rasterized=True, fillstyle='full')
+    #plt.plot(xxn[mysamp], yy[mysamp], '^', ms=0.5, color='0.5', rasterized=True, fillstyle='full')
 
-    # First define the bounds of the three sine wave coefficients to solve
-    order = 3
-    lb1 = [0, 55, 0] # long-wave amplitude, frequency, phase
-    ub1 = [20, 140, 2 * np.pi] # 
-    lb2 = [0, 20, 0] # mid-range
-    ub2 = [15, 37, 2 * np.pi]
-    lb3 = [0, 3.5, 0] # jitter
-    ub3 = [3, 5.5, 2 * np.pi]
-
-    lbb = np.concatenate((np.tile(lb1, 2 * order), np.tile(lb2, 2 * order), np.tile(lb3, 2 * order)))
-    ubb = np.concatenate((np.tile(ub1, 2 * order), np.tile(ub2, 2 * order), np.tile(ub3, 2 * order)))
+    # Define the bounds of the three sine wave coefficients to solve
+    order = 2
+    lb1 = [0, 55, -np.pi] # long-wave amplitude, frequency, phase
+    ub1 = [20, 140, np.pi] # 
+    lb2 = [0, 20, -np.pi] # mid-range
+    ub2 = [15, 40, np.pi]
+    lb3 = [0, 2, 0] # jitter
+    ub3 = [3, 10, 2 * np.pi]
+    
+    # Concatenate the bounds variables, This will determine the number of parameters
+    # in the sum of sines equation, through the length of the p0, the initial estimate
+    #lbb = np.concatenate((np.tile(lb1, 2 * order), np.tile(lb2, 2 * order), np.tile(lb3, 2 * order)))
+    lbb = np.concatenate((np.tile(lb1, 2 * order), np.tile(lb2, 2 * order)))
+    # ubb = np.concatenate((np.tile(ub1, 2 * order), np.tile(ub2, 2 * order), np.tile(ub3, 2 * order)))
+    ubb = np.concatenate((np.tile(ub1, 2 * order), np.tile(ub2, 2 * order)))
     p0 = np.divide(lbb + ubb, 2)
 
-    # use these parameters, plus the grouped statistics, to get an initial estimate for the sum of sines fit
+    # use the grouped statistics to get an initial estimate for the sum of sines fit
+    # NOTE: only using one angle, needs two angles to be correct
     print("Fitting smoothed data to find initial parameters.")
     tt0 = time.time()
     init_args = dict(args=(grp_xx, grp_dH), method="L-BFGS-B", 
                      bounds=optimize.Bounds(lbb, ubb), options={"ftol": 1E-4})
     init_results = optimize.basinhopping(costfun_sumofsin, p0, disp=True,
-                                         T=500, niter_success=15,
+                                         T=200, 
                                          minimizer_kwargs=init_args)
     init_results = init_results.lowest_optimization_result
-    
-#    init_results = optimize.least_squares(costfun_sumofsin, p0, args=(grp_xx, grp_dH),
-#                                               method='trf', bounds=([lbb, ubb]), loss='soft_l1',
-#                                               f_scale=0.8, ftol=1E-6, xtol=1E-6)
-    #    def errfun(p, xxn, xxb, yy):
-    #        return fitfun_sumofsin_2angle(xxn, xxb, p) - yy
-    #    myresults = optimize.least_squares(errfun, p0, args=(xxn[mysamp], xxb[mysamp], yy[mysamp]),
-    #                                           method='trf', bounds=([lbb, ubb]), loss='soft_l1',
-    #                                           f_scale=0.5, ftol=1E-8, xtol=1E-8, tr_solver='lsmr')
+    #init_results = optimize.least_squares(costfun_sumofsin, p0, args=(grp_xx, grp_dH),
+    #                                      method='dogbox', bounds=([lbb, ubb]), loss='linear',
+    #                                      f_scale=5, ftol=1E-8, xtol=1E-8)
+    # init_results = optimize.least_squares(costfun_sumofsin, p0, args=(grp_xx, grp_dH),
+    #                                            method='trf', bounds=([lbb, ubb]), loss='soft_l1',
+    #                                            f_scale=0.8, ftol=1E-6, xtol=1E-6)
 
     #    myresults0 = optimize.minimize(fitfun_sumofsin_2angle2, p0, args=(xxn[mysamp], xxb[mysamp], yy[mysamp]),
     #                                  bounds=optimize.Bounds(lbb,ubb), method='L-BFGS-B',
     #                                  options={'maxiter': 1000,'maxfun':1000, 'ftol':1E-8})
     
+    # use the initial estimate to start, USING two angles to get the lowest 2
+    # frequencies for the sum of sines fit
     tt1 = time.time()
     print("Initial paramaters found in : ", (tt1-tt0), " seconds")
     print("Sum of Sines Fitting using ", mysamp.size, "samples")
@@ -1006,7 +1037,7 @@ def correct_along_track_bias(mst_dem, slv_dem, ang_mapN, ang_mapB, pp, pts):
                             bounds=optimize.Bounds(lbb, ubb),
                             options={"ftol": 1E-4})
     myresults = optimize.basinhopping(costfun_sumofsin, init_results.x, disp=True,
-                                      T=1000, niter_success=20,
+                                      T=1000, niter_success=25,
                                       minimizer_kwargs=minimizer_kwargs)
     myresults = myresults.lowest_optimization_result
     tt2 = time.time()
@@ -1014,41 +1045,102 @@ def correct_along_track_bias(mst_dem, slv_dem, ang_mapN, ang_mapB, pp, pts):
 
     xxn2 = np.linspace(np.min(xxn), np.max(xxn), 1000)
     xxb2 = np.linspace(np.min(xxb), np.max(xxb), 1000)
-    mypred0 = fitfun_sumofsin(xxn2, init_results.x)
+    #mypred0 = fitfun_sumofsin(xxn2, init_results.x)
     mypred = fitfun_sumofsin_2angle(xxn2, xxb2, myresults.x)
-    plt.plot(xxn2, mypred0, '-', ms=2, color='k', rasterized=True, fillstyle='full')
-    plt.plot(xxn2, mypred, '-', ms=2, color='r', rasterized=True, fillstyle='full')
-    sinmod = fitfun_sumofsin_2angle(xxn_mat, xxb_mat, myresults.x)
-
-    ### GET ONLY LOWER FREQUENCY RESULTS
-    acoeff = myresults.x[:-18]
-    mypred2 = fitfun_sumofsin_2angle(xxn2, xxb2, acoeff)
-    sinmod2 = fitfun_sumofsin_2angle(xxn_mat, xxb_mat, acoeff)
+    #init_fig = plt.figure(figsize=(7, 5), dpi=200)    
+    #plt.plot(xxn[mysamp], yy[mysamp], '^', ms=0.5, color='0.5', rasterized=True, fillstyle='full', label='initial data')
+    #plt.plot(grp_xx, grp_dH, 'k', label='grouped medians')
+    #plt.plot(xxn2, mypred0, '-', ms=2, color='k', label='initial')
+    #plt.plot(xxn2, mypred, '-', ms=2, color='r', label='final')
+    #plt.legend()
+    #pp.savefig(init_fig, dpi=200)
+    
+    ### GET ONLY LOWER FREQUENCY RESULTS [REMNANT FROM ORIGINAL APPROACH TO SOLVE ALL FREQUENCIES AT ONCE]
+    #acoeff = myresults.x[:-18]
+    #mypred2 = fitfun_sumofsin_2angle(xxn2, xxb2, acoeff)
+    #sinmod2 = fitfun_sumofsin_2angle(xxn_mat, xxb_mat, acoeff)
 
     # plot_bias(orig_data,grp_data,mytype,pp)
-    plot_bias(xxn, yy, grp_xx, grp_dH, 'Along', pp, pmod=mypred2, smod=mypred)
+    #plot_bias(xxn, yy, grp_xx, grp_dH, 'Along', pp, pmod=(xxn2, mypred2), smod=(xxn2, mypred))
+    plot_bias(xxn, yy, grp_xx, grp_dH, 'Along', pp, smod=(xxn2, mypred))
 
+    #out_corr2 = np.reshape(sinmod2, slv_dem.img.shape)
+    # apply the low-frequency correction
+    sinmod = fitfun_sumofsin_2angle(xxn_mat, xxb_mat, myresults.x)
     out_corr = np.reshape(sinmod, slv_dem.img.shape)
-    out_corr2 = np.reshape(sinmod2, slv_dem.img.shape)
 
-    fig = plt.figure(figsize=(7, 5), dpi=200)
-    ax = plt.gca()
+    zupdate = np.ma.array(slv_dem.img + out_corr, mask=slv_dem.img.mask)
+    slv_dem_low = slv_dem.copy(new_raster=zupdate)
+
+    fig2 = plt.figure(figsize=(7, 5), dpi=200)
+    ax = fig2.gca()
     # fig.suptitle(title, fontsize = 14)
     plt1 = plt.imshow(out_corr)
     plt1.set_clim(np.nanmin(out_corr), np.nanmax(out_corr))
     divider = make_axes_locatable(ax)
     cax = divider.append_axes("right", size="5%", pad=0.05)
     plt.colorbar(plt1, cax=cax)
+    ax.set_title('Along-track Correction', fontsize=14)
+    ax.set_xlabel('column', fontsize=14)
+    ax.set_xlabel('row', fontsize=14)
     plt.tight_layout()
-    pp.savefig(fig, bbox_inches='tight', dpi=200)
+    pp.savefig(fig2, dpi=200)
 
+    # now, estimate the jitter correction using the corrected slave dem
+    grp_xx, grp_dH, xxn, xxb, yy, xxn_mat, xxb_mat = get_filtered_along_track(mst_dem, slv_dem_low, 
+                                                                              (ang_mapN, ang_mapB), pts)
+    sampsize = min(int(0.15 * xxn.size), 50000)
+    if xxn.size > sampsize:
+        mysamp = np.random.randint(0, xxn.size, sampsize)
+    else:
+        mysamp = np.arange(0, xxn.size)
+
+    lb2 = [0, 20, 0] # mid-range
+    ub2 = [5, 40, 2*np.pi]
+    lb3 = [0, 3, 0] # jitter
+    ub3 = [3, 10, 2 * np.pi]
+    lbb = np.concatenate((np.tile(lb2, 2 * order), np.tile(lb3, 2 * order)))
+    ubb = np.concatenate((np.tile(ub2, 2 * order), np.tile(ub3, 2 * order)))
+
+    p0 = np.divide(lbb + ubb, 2)
+
+    tt0 = time.time()
+    minimizer_kwargs = dict(args=(xxn[mysamp], yy[mysamp], xxb[mysamp]),
+                            method="L-BFGS-B",
+                            bounds=optimize.Bounds(lbb, ubb),
+                            options={"ftol": 1E-4})
+    jitter_res = optimize.basinhopping(costfun_sumofsin_jitter, p0, disp=True,
+                                      T=1000, minimizer_kwargs=minimizer_kwargs)
+    jitter_res = jitter_res.lowest_optimization_result
+    tt1 = time.time()
+    print("Sum of sines finished in : ", (tt1-tt0), " seconds")
+
+#    xxn2 = np.linspace(np.min(xxn), np.max(xxn), 1000)
+    jitt_pred = fitfun_sumofsin_2angle(xxn2, xxb2, jitter_res.x)
+    plot_bias(xxn, yy, grp_xx, grp_dH, 'Jitter', pp, smod=(xxn2, jitt_pred))
+
+    jitter_mod = fitfun_sumofsin_2angle(xxn_mat, xxb_mat, jitter_res.x)
+    jitter_corr = np.reshape(jitter_mod, slv_dem_low.img.shape)
     # export slave dem with three constraing along track frequences
-    zupdate = np.ma.array(slv_dem.img + out_corr, mask=slv_dem.img.mask)  # all frequencies
-    zupdate2 = np.ma.array(slv_dem.img + out_corr2, mask=slv_dem.img.mask)  # low frequencies
-    slv_dem = slv_dem.copy(new_raster=zupdate)
+    zupdate2 = np.ma.array(slv_dem_low.img + jitter_corr, mask=slv_dem_low.img.mask)  # low frequencies
     slv_dem2 = slv_dem.copy(new_raster=zupdate2)
 
-    return (slv_dem, out_corr, myresults.x), (slv_dem2, out_corr2, acoeff)
+    fig3 = plt.figure(figsize=(7, 5), dpi=200)
+    ax = fig3.gca()
+    # fig.suptitle(title, fontsize = 14)
+    plt1 = plt.imshow(jitter_corr)
+    plt1.set_clim(np.nanmin(jitter_corr), np.nanmax(jitter_corr))
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    plt.colorbar(plt1, cax=cax)
+    ax.set_title('Jitter-track Correction', fontsize=14)
+    ax.set_xlabel('column', fontsize=14)
+    ax.set_xlabel('row', fontsize=14)
+    plt.tight_layout()
+    pp.savefig(fig3, dpi=200)
+
+
+    return (slv_dem_low, out_corr, myresults.x), (slv_dem2, jitter_corr, jitter_res.x)
 
 
 def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
@@ -1107,6 +1199,7 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
     # pre-processing steps (co-registration,Correlation_masking)
     mst_coreg, slv_coreg, shift_params = preprocess(mst_dem, slv_dem, glacmask=glacmask, landmask=landmask,
                                                     work_dir='.', out_dir=out_dir, pts=pts)
+    clean_coreg_dir(out_dir, 'coreg')
 
     # OPEN and start the Results.pdf
     pp = PdfPages(os.path.sep.join([out_dir, 'BiasCorrections_Results.pdf']))
@@ -1123,54 +1216,64 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
     if pts:
         mst_coreg.clean()
         stable_mask = slv_coreg.copy(new_raster=smask)
-        mst_coreg.mask(stable_mask.raster_points(mst_coreg.xy) == 0)
+        mst_coreg.mask(stable_mask.raster_points2(mst_coreg.xy) == 0)
 
     ### Create initial plot of where stable terrain is, including ICESat pts
-    fig1 = plot_shaded_dem(slv_coreg)
-    #    ax=fig1.gca()
+    fig1 = plt.figure(figsize=(7,5), facecolor='w', dpi=200)
+    fig1, cimg = plot_shaded_dem(slv_coreg, fig=fig1)
+    ax = fig1.gca()
+    ax.set_title('Slave DEM Shaded Relief')
+    ax.set_xlabel('UTM Easting (m)')
+    ax.set_ylabel('UTM Northing (m)')
+    
     if pts:
         plt.plot(mst_coreg.x[~np.isnan(mst_coreg.elev)], mst_coreg.y[~np.isnan(mst_coreg.elev)], 'k.')
-    #    divider = make_axes_locatable(ax)
-    #    cax = divider.append_axes("right", size="5%", pad=0.05)
-    #    plt.colorbar(fig1, cax=cax)
-    pp.savefig(fig1, bbox_inches='tight', dpi=200)
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    plt.colorbar(cimg, cax=cax)
+    pp.savefig(fig1, dpi=200)
 
     ### cross-track bias removal 
     slv_coreg_xcorr, xcorr, pcoef = correct_cross_track_bias(mst_coreg, slv_coreg, ang_mapNB, pp, pts=pts)
 
     ### along-track bias removal
-    full_res, low_res = correct_along_track_bias(mst_coreg, slv_coreg_xcorr, ang_mapN, ang_mapB, pp, pts=pts)
-    slv_coreg_xcorr_acorr, acorr, scoef = full_res
-    slv_coreg_xcorr_acorr0, acorr2, scoef0 = low_res
+    low_freq, all_freq = correct_along_track_bias(mst_coreg, slv_coreg_xcorr, ang_mapN, ang_mapB, pp, pts=pts)
+    slv_coreg_xcorr_acorr, acorr, scoef = low_freq
+    slv_coreg_xcorr_acorr_jcorr, jcorr, jcoef = all_freq
 
     ### Calculate dH and statistics    
     dH0 = calculate_dH(mst_coreg, slv_coreg, pts)
     dH1 = calculate_dH(mst_coreg, slv_coreg_xcorr, pts)
-    dH2 = calculate_dH(mst_coreg, slv_coreg_xcorr_acorr0, pts)
-    dH_final = calculate_dH(mst_coreg, slv_coreg_xcorr_acorr, pts)
+    dH2 = calculate_dH(mst_coreg, slv_coreg_xcorr_acorr, pts)
+    dH_final = calculate_dH(mst_coreg, slv_coreg_xcorr_acorr_jcorr, pts)
     
     ### mask dH for 
     if not pts:
         # Calculate initial differences
         mytitle = 'dH Initial'
-        false_hillshade(dH0, mytitle, pp)
+        false_hillshade(dH0, mytitle, pp=pp)
 
         # Calculate After Cross Track Changes
         mytitle = 'dH After Cross Track Corrections'
-        false_hillshade(dH1, mytitle, pp)
+        false_hillshade(dH1, mytitle, pp=pp)
 
         # Calculate After Cross Track Changes
-        mytitle = 'dH After Low Frequence Along Track Corrections'
-        false_hillshade(dH2, mytitle, pp)
+        mytitle = 'dH After Low Frequency Along Track Corrections'
+        false_hillshade(dH2, mytitle, pp=pp)
+
+        # Calculate After Cross Track Changes - TWICE TO SHOW THE ENHANCED SCALE
+        mytitle = 'dH After Low Frequency Along Track Corrections'
+        false_hillshade(dH2, mytitle, pp=pp, clim=(-7, 7))
 
         # Calculate post correction differences
         mytitle = 'dH After ALL Along Track Corrections'
-        false_hillshade(dH_final, mytitle, pp)
+        false_hillshade(dH_final, mytitle, pp=pp, clim=(-7, 7))
 
         final_histogram(dH0.img, dH1.img, dH2.img, dH_final.img, pp)
     elif pts:
         # Calculate initial differences
         final_histogram(dH0, dH1, dH2, dH_final, pp)
+#        final_histogram(dH0, dH1, dH_final, pp)
 
     #### PREPARE OUTPUT - have to apply the corrections to the original, unfiltered slave DEM.
     # first, we apply the co-registration shift.
@@ -1191,26 +1294,27 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
 
     # now, calculate and apply the along-track corrections
     xxn_mat, xxb_mat = get_atrack_coord(orig_slv, ang_mapN, ang_mapB)
-
-    sinmod_low = fitfun_sumofsin_2angle(xxn_mat, xxb_mat, scoef0)
+    sinmod_low = fitfun_sumofsin_2angle(xxn_mat, xxb_mat, scoef)
     along_correction_low = np.reshape(sinmod_low, orig_slv.img.shape)
     orig_slv.img = orig_slv.img + along_correction_low
     
     outname = os.path.splitext(slv_dem)[0] + "_adj_XA.tif"
     orig_slv.write(outname, out_folder=out_dir)
-    np.savetxt(os.path.sep.join([out_dir, 'params_AlongTrack_SumofSines_lowfreq.txt']), scoef0)
+    np.savetxt(os.path.sep.join([out_dir, 'params_AlongTrack_SumofSines.txt']), scoef)
     plt.close("all")
 
     # finally, calculate and apply the full-frequency along-track correction.
-    sinmod = fitfun_sumofsin_2angle(xxn_mat, xxb_mat, scoef)
+    sinmod = fitfun_sumofsin_2angle(xxn_mat, xxb_mat, jcoef)
     along_correction = np.reshape(sinmod, orig_slv.img.shape)
     orig_slv.img = orig_slv.img - along_correction_low + along_correction
 
     outname = os.path.splitext(slv_dem)[0] + "_adj_XAJ.tif"
     orig_slv.write(outname, out_folder=out_dir)
-    np.savetxt(os.path.sep.join([out_dir, 'params_AlongTrack_SumofSines.txt']), scoef)
+    np.savetxt(os.path.sep.join([out_dir, 'params_AlongTrack_Jitter.txt']), jcoef)
     plt.close("all")
 
+    pp.close()
+    
     ### re-coregister
     print('Re-co-registering DEMs.')
     recoreg_outdir = os.path.sep.join([out_dir, 're-coreg'])
@@ -1224,7 +1328,7 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
 
     plt.close("all")
     # clean-up 
-    pp.close()
+    
     print("Fin.")
 
     if return_geoimg:
