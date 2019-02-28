@@ -760,25 +760,6 @@ def costfun_sumofsin(p, xxn, yy, xxb=None, myscale=0.5):
     # SOFT-L1 loss function  with SCALING
     return myerr
 
-def costfun_sumofsin_jitter(p, xxn, yy, xxb=None):
-    if xxb is not None:
-        myval = fitfun_sumofsin_2angle(xxn, xxb, p)
-    else:
-        myval = fitfun_sumofsin(xxn, p)
-    # DEFINE THE COST FUNCTION
-    #    myerr = RMSE(yy - myval)
-    #    myerr = nmad(yy - myval)
-    #    myerr = np.sum(np.abs(yy-myval))    # called MAE or L1 loss function
-    #    myerr = np.linalg.norm(yy-myval)
-    #    myerr = np.sqrt(np.sum((yy-myval) ** 2))
-    #    myerr = huber_loss(yy-myval)    # HUBER loss function (reduce the weight of outliers)
-    #    myerr = np.sum((np.sqrt(1+np.square(yy-myval))-1))    # SOFT-L1 loss function (reduce the weight of outliers)
-    myscale = 0.1
-    myerr = np.sum(np.square(myscale) * soft_loss(np.square(np.divide(yy - myval, myscale))))
-    #    myerr = np.sum( np.square(myscale)*2*(np.sqrt(1+np.square(np.divide(yy-myval,myscale)))-1) ) 
-    # SOFT-L1 loss function  with SCALING
-    return myerr
-
 def plot_bias(xx, dH, grp_xx, grp_dH, title, pp, pmod=None, smod=None, plotmin=None, txt=None):
     """
     data : original data as numpy array (:,2), x = 1col,y = 2col
