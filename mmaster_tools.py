@@ -348,7 +348,7 @@ def preprocess(mst_dem, slv_dem, glacmask=None, landmask=None, work_dir='.', out
     corr = GeoImg(ast_name + '_CORR.tif')
 
     ortho.shift(shift_params[0], shift_params[1])
-    ortho.write(os.path.sep.join([out_dir, '{}_V123_adj.tif'.format(ast_name)]), dtype=np.int8)
+    ortho.write(os.path.sep.join([out_dir, '{}_V123_adj.tif'.format(ast_name)]), dtype=np.uint8)
 
     corr.shift(shift_params[0], shift_params[1])
     corr.write(os.path.sep.join([out_dir, '{}_CORR_adj.tif'.format(ast_name)]), dtype=np.uint8)
@@ -738,11 +738,10 @@ def huber_loss(z):
 
 
 def soft_loss(z):  # z is residual
-    out = 2 * (np.sqrt(1 + z) - 1)  # SOFT-L1 loss function (reduce the weight of outliers)
-    return out
+    return 2 * (np.sqrt(1 + z) - 1)  # SOFT-L1 loss function (reduce the weight of outliers)
 
 
-def costfun_sumofsin(p, xxn, yy, xxb=None):
+def costfun_sumofsin(p, xxn, yy, xxb=None, myscale=0.5):
     if xxb is not None:
         myval = fitfun_sumofsin_2angle(xxn, xxb, p)
     else:
@@ -755,7 +754,7 @@ def costfun_sumofsin(p, xxn, yy, xxb=None):
     #    myerr = np.sqrt(np.sum((yy-myval) ** 2))
     #    myerr = huber_loss(yy-myval)    # HUBER loss function (reduce the weight of outliers)
     #    myerr = np.sum((np.sqrt(1+np.square(yy-myval))-1))    # SOFT-L1 loss function (reduce the weight of outliers)
-    myscale = 0.5
+    # myscale = 0.5
     myerr = np.sum(np.square(myscale) * soft_loss(np.square(np.divide(yy - myval, myscale))))
     #    myerr = np.sum( np.square(myscale)*2*(np.sqrt(1+np.square(np.divide(yy-myval,myscale)))-1) ) 
     # SOFT-L1 loss function  with SCALING
@@ -1039,7 +1038,7 @@ def correct_along_track_bias(mst_dem, slv_dem, ang_mapN, ang_mapB, pp, pts):
                             bounds=optimize.Bounds(lbb, ubb),
                             options={"ftol": 1E-4})
     myresults = optimize.basinhopping(costfun_sumofsin, init_results.x, disp=True,
-                                      T=1000, niter_success=25,
+                                      T=1000, niter_success=40,
                                       minimizer_kwargs=minimizer_kwargs)
     myresults = myresults.lowest_optimization_result
     tt2 = time.time()
@@ -1105,14 +1104,21 @@ def correct_along_track_bias(mst_dem, slv_dem, ang_mapN, ang_mapB, pp, pts):
     ubb = np.concatenate((np.tile(ub2, 2 * order), np.tile(ub3, 2 * order)))
 
     p0 = np.divide(lbb + ubb, 2)
-
+    
+    if xxn.size < 10000:
+        Tparam = 100
+        myscale = 0.5
+    else:
+        Tparam = 1000
+        myscale = 0.1
+    
     tt0 = time.time()
-    minimizer_kwargs = dict(args=(xxn[mysamp], yy[mysamp], xxb[mysamp]),
+    minimizer_kwargs = dict(args=(xxn[mysamp], yy[mysamp], xxb[mysamp], myscale),
                             method="L-BFGS-B",
                             bounds=optimize.Bounds(lbb, ubb),
                             options={"ftol": 1E-4})
-    jitter_res = optimize.basinhopping(costfun_sumofsin_jitter, p0, disp=True,
-                                      T=1000, minimizer_kwargs=minimizer_kwargs)
+    jitter_res = optimize.basinhopping(costfun_sumofsin, p0, disp=True,
+                                      T=Tparam, minimizer_kwargs=minimizer_kwargs)
     jitter_res = jitter_res.lowest_optimization_result
     tt1 = time.time()
     print("Sum of sines finished in : ", (tt1-tt0), " seconds")
@@ -1177,12 +1183,6 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
     orig_dir = os.getcwd()
     os.chdir(work_dir)
     
-    if write_log:
-        print(os.getcwd())
-        logfile = open('mmaster_bias_correct_' + str(os.getpid()) + '.log', 'w')
-        errfile = open('mmaster_bias_correct_' + str(os.getpid()) + '_error.log', 'w')
-        sys.stdout = logfile
-        sys.stderr = errfile
     # if the output directory does not exist, create it.
     # out_dir = os.path.sep.join([work_dir, out_dir])
     try:
@@ -1192,6 +1192,14 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
             pass
         else:
             raise
+
+    # Prepare LOG files 
+    if write_log:
+        print(os.getcwd())
+        logfile = open(os.path.join(out_dir,'mmaster_bias_correct_' + str(os.getpid()) + '.log'), 'w')
+        errfile = open(os.path.join(out_dir,'mmaster_bias_correct_' + str(os.getpid()) + '_error.log'), 'w')
+        sys.stdout = logfile
+        sys.stderr = errfile
 
     # import angle data
     ang_mapN = GeoImg('TrackAngleMap_3N.tif')
@@ -1250,12 +1258,14 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
 
     ### cross-track bias removal 
     slv_coreg_xcorr, xcorr, pcoef = correct_cross_track_bias(mst_coreg, slv_coreg, ang_mapNB, pp, pts=pts)
-
+    plt.close("all")
+    
     ### along-track bias removal
     low_freq, all_freq = correct_along_track_bias(mst_coreg, slv_coreg_xcorr, ang_mapN, ang_mapB, pp, pts=pts)
     slv_coreg_xcorr_acorr, acorr, scoef = low_freq
     slv_coreg_xcorr_acorr_jcorr, jcorr, jcoef = all_freq
-
+    plt.close("all")
+    
     ### Calculate dH and statistics    
     dH0 = calculate_dH(mst_coreg, slv_coreg, pts)
     dH1 = calculate_dH(mst_coreg, slv_coreg_xcorr, pts)
@@ -1289,7 +1299,7 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
         # Calculate initial differences
         final_histogram(dH0, dH1, dH2, dH_final, pp)
 #        final_histogram(dH0, dH1, dH_final, pp)
-
+    
     #### PREPARE OUTPUT - have to apply the corrections to the original, unfiltered slave DEM.
     # first, we apply the co-registration shift.
     orig_slv = GeoImg(slv_dem)
@@ -1343,9 +1353,8 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
 
     plt.close("all")
     # clean-up 
+    print("Fin. Final. Finale.")
     
-    print("Fin.")
-
     if write_log:
         sys.stdout = sys.__stdout__
         sys.stderr = sys.__stderr__
