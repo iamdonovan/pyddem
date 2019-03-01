@@ -160,7 +160,7 @@ def nmad(data):
     return np.nanmedian(np.abs(data) - np.nanmedian(data))
 
 
-def get_aster_footprint(gran_name, epsg='4326'):
+def get_aster_footprint(gran_name, epsg='4326', indir=None, polyout=True):
     """
     Create shapefile of ASTER footprint from .met file.
     
@@ -177,11 +177,15 @@ def get_aster_footprint(gran_name, epsg='4326'):
     """
 
     ### MADE AN ADJUSTMENT TO ASSUME THAT THE .MET FILE IS IN THE CURRENT FOLDER OF OPERATION
-    metlist = glob(os.path.abspath('*.met'))
+    if indir is None:
+        metlist = glob(os.path.abspath('*.met'))
+    else:
+        metlist = glob(os.path.abspath(os.path.sep.join([indir, '*.met'])))
 
-    schema = {'properties': [('id', 'int')], 'geometry': 'Polygon'}
-    outshape = fiona.open(gran_name + '_Footprint.shp', 'w', crs=fiona.crs.from_epsg(int(epsg)),
-                          driver='ESRI Shapefile', schema=schema)
+    if polyout:
+        schema = {'properties': [('id', 'int')], 'geometry': 'Polygon'}
+        outshape = fiona.open(gran_name + '_Footprint.shp', 'w', crs=fiona.crs.from_epsg(int(epsg)),
+                              driver='ESRI Shapefile', schema=schema)
 
     footprints = []
     for m in metlist:
@@ -208,8 +212,9 @@ def get_aster_footprint(gran_name, epsg='4326'):
     footprint = cascaded_union(footprints)
     footprint = footprint.simplify(0.0001)
     outprint = reproject_geometry(footprint, 4326, epsg)
-    outshape.write({'properties': {'id': 1}, 'geometry': mapping(outprint)})
-    outshape.close()
+    if polyout:
+        outshape.write({'properties': {'id': 1}, 'geometry': mapping(outprint)})
+        outshape.close()
     return outprint
 
 
