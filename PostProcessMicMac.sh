@@ -98,12 +98,14 @@ for dir in ${subList[@]}; do
 		cd MEC-Malt
 		# note: this could actually be hard-coded, since it's probably always 9.
         finalimgs=($(ls Z_Num*_DeZoom1_STD-MALT.tif))
-        finalmsks=($(ls AutoMask_STD-MALT_Num*.tif))
-        finalcors=($(ls Correl_STD-MALT_Num*.tif))
+        #finalmsks=($(ls AutoMask_STD-MALT_Num*.tif))
+        #finalcors=($(ls Correl_STD-MALT_Num*.tif))
+        finalmsks=($(find . -regextype posix-extended -regex '^.*AutoMask_STD-MALT_Num_[0-9]{1}\.tif'))
+        finalcors=($(find . -regextype posix-extended -regex '^.*Correl_STD-MALT_Num_[0-9]{1}\.tif'))
 		# find the last image name. ancient systems like RHEL6 don't like the -1 index.
         lastimg=${finalimgs[-1]}
-        lastmsk=${finalmsks[-1]}
-        lastcor=${finalcors[-1]}
+        lastmsk=${finalmsks[-1]:2} # note that find will return ./AutoMask_...
+        lastcor=${finalcors[-1]:2}
 		# here's the kludge that should work on all bash systems, even
 		# the ancient ones like RHEL6.
 		#imgind=$((${#finalimgs[@]}-1))
