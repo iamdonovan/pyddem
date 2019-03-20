@@ -18,7 +18,7 @@ ZoomF=1
 RESTERR=30
 CorThr=0.7
 SzW=5
-water_mask=false
+nameWaterMask=false
 do_ply=false
 do_angle=false
 NoCorDEM=false
@@ -70,7 +70,7 @@ while getopts "s:z:c:q:wnf:t:y:ai:h" opt; do
       echo "SzW set to $SzW"
       ;;
     w)
-e     echo "Water mask selected: " $OPTARG
+     echo "Water mask selected: " $OPTARG
 	  nameWaterMask=$OPTARG
       ;;
     f)

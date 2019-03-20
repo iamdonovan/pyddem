@@ -63,9 +63,9 @@ def main():
         for d in u_args:
             d.update(arg_dict)
         
-        pool.map_async(batch_wrapper, u_args)
+        pool.map(batch_wrapper, u_args)
         pool.close()
-        pool.join()
+        #pool.join()
 
     else:
         odir = os.getcwd()
