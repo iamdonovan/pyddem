@@ -1087,10 +1087,10 @@ def correct_along_track_bias(mst_dem, slv_dem, ang_mapN, ang_mapB, pp, pts):
     p0 = np.divide(lbb + ubb, 2)
     
     if xxn.size < 10000:
-        Tparam = 100
+        Tparam = 50
         myscale = 0.5
     else:
-        Tparam = 1000
+        Tparam = 500
         myscale = 0.1
     
     tt0 = time.time()
