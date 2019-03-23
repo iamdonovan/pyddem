@@ -1,11 +1,16 @@
 #!/usr/bin/env python
 from __future__ import print_function, division
 import os
+os.environ["OMP_NUM_THREADS"] = "1" # export OMP_NUM_THREADS=4
+os.environ["OPENBLAS_NUM_THREADS"] = "1" # export OPENBLAS_NUM_THREADS=4 
+os.environ["MKL_NUM_THREADS"] = "1" # export MKL_NUM_THREADS=6
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1" # export VECLIB_MAXIMUM_THREADS=4
+os.environ["NUMEXPR_NUM_THREADS"] = "1" # export NUMEXPR_NUM_THREADS=6
 import argparse
 import multiprocessing as mp
 from glob import glob
 import matplotlib
-#matplotlib.use('Agg')
+matplotlib.use('Agg')
 import numpy as np
 import geopandas as gpd
 import gdal
@@ -122,8 +127,8 @@ else:
         os.chdir(odir)
 
 # clean up after ourselves, remove the vrts we created.
-for v in master_list:
-    os.remove(v)
+#for v in master_list:
+#    os.remove(v)
 
 
 #if __name__ == "__main__":
