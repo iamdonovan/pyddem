@@ -70,8 +70,7 @@ def main():
         
         pool.map(batch_wrapper, u_args)
         pool.close()
-        #pool.join()
-
+        pool.join()
     else:
         odir = os.getcwd()
         for indir in args.indir:
