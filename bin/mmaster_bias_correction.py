@@ -12,14 +12,13 @@ from glob import glob
 import matplotlib
 matplotlib.use('Agg')
 import numpy as np
-from mmaster_tools import mmaster_bias_removal
+from pymmaster.mmaster_tools import mmaster_bias_removal
 
 
 def batch_wrapper(arg_dict):
     return mmaster_bias_removal(**arg_dict)
 
-def main():
-    np.seterr(all='ignore')
+def _argparser():
     parser = argparse.ArgumentParser(description="Run MMASTER post-processing bias corrections, given external elevation data.")
     # things to add: input directory, master dem and/or elevation data
     # optional: output directory, number of processors, land mask, glacier mask, number of jitter iterations?
@@ -43,6 +42,12 @@ def main():
                         help="process assuming that master DEM is point elevations [False].")
     parser.add_argument('-l', '--log', action='store_true', default=False,
                         help="write output to a log file rather than printing to the screen [False].")
+    return parser
+
+
+def main():
+    np.seterr(all='ignore')
+    parser = _argparser()
     args = parser.parse_args()
     
     # figure out if we have one image or many
