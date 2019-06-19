@@ -25,16 +25,6 @@ from pymmaster.mmaster_tools import reproject_geometry
 from pybob.coreg_tools import dem_coregistration
 
 
-def mkdir_p(out_dir):
-    try:
-        os.makedirs(out_dir)
-    except OSError as exc:  # Python >2.5
-        if exc.errno == errno.EEXIST and os.path.isdir(out_dir):
-            pass
-        else:
-            raise    
-
-
 def read_stats(fname):
     with open(fname, 'r') as f:
         lines = f.readlines()
@@ -90,6 +80,15 @@ def get_common_bbox(filelist, epsg=None):
 
 
 def create_crs_variable(epsg, nco):
+    """
+    Given an EPSG code, create a CRS variable for a NetCDF file.
+
+    :param epsg: EPSG code for chosen CRS.
+    :param nco: NetCDF file to create CRS variable for.
+    :type epsg: int
+    :type nco: netCDF4.Dataset
+    :returns crso: NetCDF variable representing the CRS.
+    """
     sref = osr.SpatialReference()
     sref.ImportFromEPSG(epsg)
     
@@ -131,6 +130,19 @@ def create_crs_variable(epsg, nco):
 
 
 def create_nc(img, outfile='mmaster_stack.nc', clobber=False, t0=None):
+    """
+    Create a NetCDF dataset with x, y, and time variables.
+
+    :param img: Input GeoImg to base shape of x, y variables on.
+    :param outfile: Filename for output NetCDF file.
+    :param clobber: clobber existing dataset when creating NetCDF file.
+    :param t0: Initial time for creation of time variable. Default is 01 Jan 1900.
+    :type img: pybob.GeoImg
+    :type outfile: str
+    :type clobber: bool
+    :type t0: np.datetime64
+    :returns nco, to, xo, yo: output NetCDF dataset, time, x, and y variables.
+    """
     nrows, ncols = img.shape
 
     nco = netCDF4.Dataset(outfile, 'w', clobber=clobber)
@@ -184,8 +196,38 @@ def create_mmaster_stack(filelist, extent=None, res=None, epsg=None, outfile='mm
                          clobber=False, uncert=False, coreg=False, mst_tiles=None,
                          exc_mask=None, inc_mask=None, outdir='tmp', filt_dem=None):
     """
+    Given a list of DEM files, create a stacked NetCDF file.
 
-    """    
+    :param filelist: List of DEM filenames to stack.
+    :param extent: Spatial extent of DEMs to limit stack to [xmin, xmax, ymin, ymax].
+    :param res: Output spatial resolution of DEMs.
+    :param epsg: EPSG code of output CRS.
+    :param outfile: Filename for output NetCDF file.
+    :param clobber: clobber existing dataset when creating NetCDF file.
+    :param uncert: Include uncertainty variable in the output NetCDF.
+    :param coreg: Co-register DEMs to an input DEM (given by a shapefile of tiles).
+    :param mst_tiles: Filename of input master DEM tiles.
+    :param exc_mask: Filename of exclusion mask (i.e., glaciers) to use in co-registration
+    :param inc_mask: Filename of inclusion mask (i.e., land) to use in co-registration.
+    :param outdir: Output directory for temporary files.
+    :param filt_dem: Filename of DEM to filter elevation differences to.
+
+    :type filelist: array-like
+    :type extent: array-like
+    :type res: float
+    :type epsg: int
+    :type outfile: str
+    :type clobber: bool
+    :type uncert: bool
+    :type coreg: bool
+    :type mst_tiles: str
+    :type exc_mask: str
+    :type inc_mask: str
+    :type outdir: str
+    :type filt_dem: str
+
+    :returns nco: NetCDF Dataset of stacked DEMs.
+    """
     if extent is not None:
         if type(extent) in [list, tuple]:
             xmin, xmax, ymin, ymax = extent
@@ -207,8 +249,8 @@ def create_mmaster_stack(filelist, extent=None, res=None, epsg=None, outfile='mm
         mst = GeoImg(mst_vrt)
 
     # check if each footprint falls within our given extent, and if not - remove from the list.
-    #fprints = get_footprints(filelist, epsg)
-    #red_filelist = [f for i, f in filelist if extPoly.intersects(fprints[i])]
+    # fprints = get_footprints(filelist, epsg)
+    # red_filelist = [f for i, f in filelist if extPoly.intersects(fprints[i])]
 
     datelist = np.array([parse_date(f) for f in filelist])
     sorted_inds = np.argsort(datelist)
@@ -324,4 +366,3 @@ def create_mmaster_stack(filelist, extent=None, res=None, epsg=None, outfile='mm
         outind += 1
     
     return nco
-    
