@@ -16,7 +16,7 @@ import geopandas as gpd
 import gdal
 import pyproj
 from shapely.strtree import STRtree
-from mmaster_tools import mmaster_bias_removal, get_aster_footprint
+from pymmaster.mmaster_tools import mmaster_bias_removal, get_aster_footprint
 
 
 def batch_wrapper(argsin):

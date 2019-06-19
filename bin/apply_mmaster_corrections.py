@@ -2,7 +2,7 @@
 from __future__ import print_function
 import argparse
 import numpy as np
-import mmaster_tools as mt
+import pymmaster.mmaster_tools as mt
 from pybob.GeoImg import GeoImg
 
 
