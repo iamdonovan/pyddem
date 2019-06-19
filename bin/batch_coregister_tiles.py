@@ -102,10 +102,7 @@ def batch_wrapper(argsin):
     clean_coreg_dir(arg_dict['outdir'])
 
 
-def main():
-    np.seterr(all='ignore')
-    # add master, slave, masks to argparse
-    # can also add output directory
+def _argparser():
     parser = argparse.ArgumentParser(description="Iteratively calculate co-registration \
                                      parameters for two DEMs, as seen in Nuth and Kaeaeb (2011).")
     parser.add_argument('master_tiles', type=str, help='path to master DEM tiles to be used for co-registration')
@@ -120,6 +117,14 @@ def main():
                         help="Process assuming that master DEM is ICESat data [False].")
     parser.add_argument('-f', '--full_ext', action='store_true', default=False,
                         help="Write full extent of master DEM and shifted slave DEM. [False].")
+    return parser
+
+
+def main():
+    np.seterr(all='ignore')
+    # add master, slave, masks to argparse
+    # can also add output directory
+    parser = _argparser()
     args = parser.parse_args()
 
     print('Number of images given: {}'.format(len(args.infiles)))

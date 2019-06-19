@@ -27,12 +27,17 @@ def mkdir_p(outdir):
             raise
 
 
-def main():
+def _argparser():
     parser = argparse.ArgumentParser(description="Sort ASTER scenes into folders based on whether \
     or not they form continuous strips.")
     parser.add_argument('--folder', action='store', type=str, help="Folder with raw, unsorted ASTER data.")
-    parser.add_argument('--max_length', action='store', type=int, default=3, 
+    parser.add_argument('--max_length', action='store', type=int, default=3,
                         help="Maximum number of scenes to put into a strip [3].")
+    return parser
+
+
+def main():
+    parser = _argparser()
     args = parser.parse_args()
     
     if args.folder is not None:

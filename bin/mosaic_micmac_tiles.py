@@ -19,13 +19,18 @@ def arrange_tiles(flist, args):
     return img_arr
 
 
-def main():
+def _argparser():
     parser = argparse.ArgumentParser(description="Re-stitch images tiled by MicMac.",
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('-filename', action='store', type=str, default='Z_Num9_DeZoom1_STD-MALT',
                         help="MicMac filename to tile [Z_Num9_DeZoom1_STD-MALT]")
     parser.add_argument('-imgdir', action='store', type=str, default='.',
                         help="Directory containing images [.]")
+    return parser
+
+
+def main():
+    parser = _argparser()
     args = parser.parse_args()
     
     filelist = glob(os.path.sep.join([args.imgdir, '{}_Tile*'.format(args.filename)]))

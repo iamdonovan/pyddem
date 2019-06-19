@@ -11,32 +11,38 @@ def read_params_file(fname):
         lines = f.readlines()
     return np.array([np.float64(l.strip()) for l in lines])
 
-def main():
-    np.seterr(all='ignore')
+
+def _argparser():
     parser = argparse.ArgumentParser(description="Apply MMASTER post-processing bias corrections to a MMASTER DEM.")
     parser.add_argument('dem', type=str, help='Filename of DEM to load.')
-    parser.add_argument('-i', '--input_dir', type=str, default='.', 
+    parser.add_argument('-i', '--input_dir', type=str, default='.',
                         help='Input directory to use. Default is current working directory.')
     parser.add_argument('-m', '--corr_mask', type=str, default=None,
                         help='(optional) filename of correlation mask to apply.')
-    parser.add_argument('-t', '--threshold', type=float, default=60., 
+    parser.add_argument('-t', '--threshold', type=float, default=60.,
                         help='(optional) correlation threshold to use. Default is 60.')
-    parser.add_argument('-c', '--cross_track_params', type=str, 
+    parser.add_argument('-c', '--cross_track_params', type=str,
                         default='biasrem/params_CrossTrack_Polynomial.txt',
                         help='(Relative) path to cross-track correction parameter file. Default is\
                         [input_dir]/biasrem/params_CrossTrack_Polynomial.txt')
     parser.add_argument('-l', '--low_freq', action='store_true', default=False,
                         help='Only apply low-frequency along-track corrections. Default applies full frequency.')
-    parser.add_argument('-f', '--along_track_full', type=str, 
+    parser.add_argument('-f', '--along_track_full', type=str,
                         default='biasrem/params_AlongTrack_SumofSines.txt',
                         help='(Relative) path to full-frequency along-track correction parameter file. Default is\
                         [input_dir]/biasrem/params_AlongTrack_SumofSines.txt')
-    parser.add_argument('-w', '--along_track_low', type=str, 
+    parser.add_argument('-w', '--along_track_low', type=str,
                         default='biasrem/params_AlongTrack_SumofSines_lowfreq.txt',
                         help='(Relative) path to low-frequency along-track correction parameter file. Default is\
                         [input_dir]/biasrem/params_AlongTrack_SumofSines_lowfreq.txt')
     parser.add_argument('-o', '--outfilename', type=str, default=None,
                         help='Output filename for corrected DEM. Default is inputdem_XAJ.tif')
+    return parser
+
+
+def main():
+    np.seterr(all='ignore')
+    parser = _argparser()
     args = parser.parse_args()
 
     if args.outfilename is None:

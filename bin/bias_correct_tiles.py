@@ -61,8 +61,7 @@ def get_tiles(indir, master_tiles, s):
     return os.path.sep.join([os.path.abspath(indir), 'tmp_{}.vrt'.format(dname)])
 
 
-def main():
-    np.seterr(all='ignore')
+def _argparser():
     parser = argparse.ArgumentParser(description="Run MMASTER post-processing bias corrections, given external elevation data.")
     # things to add: input directory, master dem and/or elevation data
     # optional: output directory, number of processors, land mask, glacier mask, number of jitter iterations?
@@ -86,8 +85,13 @@ def main():
                         help="process assuming that master DEM is point elevations [False].")
     parser.add_argument('-l', '--log', action='store_true', default=False,
                         help="write output to a log file rather than printing to the screen [False].")
+    return parser
+
+
+def main():
+    np.seterr(all='ignore')
+    parser = _argparser()
     args = parser.parse_args()
-    
     # figure out if we have one image or many
     print('Number of image directories given: {}'.format(len(args.indir)))
     
