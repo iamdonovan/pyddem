@@ -15,7 +15,7 @@ def _argparser():
                         help='Path to mask file [./MEC-Malt/Masq_STD-MALT_DeZoom1.tif]')
     parser.add_argument('-g', '--geom', action='store', type=str, default='eGeomMNTEuclid',
                         help='MicMac Geometry name [eGeomMNTEuclid]')
-    return _argparser()
+    return parser
 
 
 def main():
