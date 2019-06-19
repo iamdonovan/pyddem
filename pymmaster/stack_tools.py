@@ -1,3 +1,6 @@
+"""
+pymmaster.stack_tools provides tools to create stacks of DEM data, usually MMASTER DEMs.
+"""
 from __future__ import print_function
 import os
 os.environ["OMP_NUM_THREADS"] = "1" # export OMP_NUM_THREADS=4
