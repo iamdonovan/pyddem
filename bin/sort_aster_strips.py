@@ -2,11 +2,12 @@
 from __future__ import print_function
 import os
 import shutil
-import errno
 from datetime import datetime, timedelta
 from glob import glob
 import argparse
 import numpy as np
+from pybob.bob_tools import mkdir_p
+
 
 def parse_aster_filename(fname):
     return datetime.strptime(fname[11:25], '%m%d%Y%H%M%S')
@@ -15,16 +16,6 @@ def parse_aster_filename(fname):
 def sliding_window(a, size, step):
     for i in range(0, len(a)-1, step):
         yield(a[i:i+size])
-
-
-def mkdir_p(outdir):
-    try:
-        os.makedirs(outdir)
-    except OSError as exc:  # Python >2.5
-        if exc.errno == errno.EEXIST and os.path.isdir(outdir):
-            pass
-        else:
-            raise
 
 
 def _argparser():

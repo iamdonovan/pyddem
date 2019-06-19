@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 from __future__ import print_function, division
-import errno
 import sys
 import os
 os.environ["OMP_NUM_THREADS"] = "1" # export OMP_NUM_THREADS=4
@@ -22,22 +21,13 @@ from pymmaster.mmaster_tools import reproject_geometry
 from shapely.strtree import STRtree
 from pybob.coreg_tools import dem_coregistration
 from pybob.GeoImg import GeoImg
+from pybob.bob_tools import mkdir_p
 
 
 def clean_coreg_dir(out_dir):
     search_str = glob(os.path.sep.join([out_dir, 'tmp*.tif']))
     for f in search_str:
         os.remove(f)
-
-
-def mkdir_p(outdir):
-    try:
-        os.makedirs(outdir)
-    except OSError as exc:  # Python >2.5
-        if exc.errno == errno.EEXIST and os.path.isdir(outdir):
-            pass
-        else:
-            raise
 
 
 def buffer_conversion(fprint, buff_orig):
