@@ -45,22 +45,16 @@ def clean_coreg_dir(out_dir, cdir):
 def make_mask(inpoly, pts, raster_out=False):
     """
     Create a True/False mask to determine whether input points are within a polygon.
-    
-    Parameters
-    ----------
-    inpoly : shapely Polygon
-        Input polygon to use to create mask.
-    pts : array-like or GeoImg
-        Either a list of (x,y) coordinates, or a GeoImg. If a list of (x,y) coordinates,
+
+    :param inpoly: Input polygon to use to create mask.
+    :param pts: Either a list of (x,y) coordinates, or a GeoImg. If a list of (x,y) coordinates,
         make_mask uses shapely.polygon.contains to determine if the point is within inpoly.
         If pts is a GeoImg, make_mask uses ogr and gdal to "rasterize" inpoly to the GeoImg raster.
-    raster_out : bool
-        Kind of output to return. If True, pts must be a GeoImg.
-        
-    Returns
-    -------
-    mask : array-like, bool
-        An array which is True where pts is within inpoly, False elsewhere.
+    :param raster_out: Kind of output to return. If True, pts must be a GeoImg.
+    :type inpoly: shapely Polygon
+    :type pts: array-like, pybob.GeoImg
+    :type raster_out: bool
+    :returns mask: An array which is True where pts lie within inpoly and False elsewhere.
     """
     if not raster_out:
         mask = []
@@ -94,25 +88,29 @@ def make_mask(inpoly, pts, raster_out=False):
 def make_group_id(inmat, grpid):
     """
     Make a unique ID for statistical analysis.
-    
-    Parameters
-    ----------
-    inmat : array-like
-        Input matrix to create ID for.
-    grpid : array-like
-        Matrix of input group IDs.
 
-    Returns
-    -------
-    outmat : array-like
-        Output of group IDs.
+    :param inmat: Input array to create ID for.
+    :param grpid: Array of input group IDs
+    :type inmat: array-like
+    :type grpid: array-like
+
+    :returns outmat: Output of group IDs
     """
     return np.floor(inmat / grpid) * grpid
 
 
 def get_group_statistics(invar, indata, indist=500):
     """
-    Calculate statistics on groups of pixels.
+    Calculate statistics of groups of pixels grouped by along-track distance.
+
+    :param invar: Input array that determines how to group data (i.e., along-track distance)
+    :param indata: Data to calculate group statistics for.
+    :param indist: Distance by which to group pixels.
+    :type invar: array-like
+    :type indata: array-like
+    :type indist: float
+
+    :returns grp_stats: group statistics for input data.
     """
     xxid = make_group_id(invar, indist)  # across track coordinates (grouped 500m)
     # yyid = make_group_id(yyr,500) # along track coordinates (grouped 500m)
@@ -125,27 +123,21 @@ def get_group_statistics(invar, indata, indist=500):
     return xxgrp
 
 
-def reproject_geometry(src_data, src_epsg, dst_epsg):
+def reproject_geometry(src_data, src_crs, dst_crs):
     """
-    Reprojects src_data from one coordinate system to another.
-    
-    Parameters
-    ----------
-    src_data : geometry object
-        shapely geometry object to be reprojected.
-    src_epsg : str
-        Proj4 string of source CRS
-    dst_epsg : str
-        Proj4 string of destination CRS
-        
-    Returns
-    -------
-    dst_data : geometry object
-        reprojected shapely geometry object.    
+    Reproject a geometry object from one coordinate system to another.
+
+    :param src_data: geometry object to reproject
+    :param src_crs: proj4 description of source CRS
+    :param dst_crs: proj4 description of destination CRS
+    :type src_data: shapely geometry
+    :type src_crs: str, dict
+    :type dst_crs: str, dict
+
+    :returns dst_data: reprojected data.
     """
-    
-    src_proj = pyproj.Proj(src_epsg)
-    dst_proj = pyproj.Proj(dst_epsg)
+    src_proj = pyproj.Proj(src_crs)
+    dst_proj = pyproj.Proj(dst_crs)
     project = partial(pyproj.transform, src_proj, dst_proj)
     return transform(project, src_data)
 
@@ -153,39 +145,29 @@ def reproject_geometry(src_data, src_epsg, dst_epsg):
 def nmad(data):
     """
     Calculate the Normalized Median Absolute Deviation (NMAD) of the input dataset.
-    
-    Parameters
-    ----------
-    data : array-like
-        Dataset on which to calculate nmad
-    
-    Returns
-    -------
-    nmad : array-like
-        Normalized Median Absolute Deviation of input dataset
+
+    :param data: input data on which to calculate NMAD
+    :type data: array-like
+
+    :returns nmad: NMAD of input dataset.
     """
     return np.nanmedian(np.abs(data) - np.nanmedian(data))
 
 
 def get_aster_footprint(gran_name, proj4='+units=m +init=epsg:4326', indir=None, polyout=True):
     """
-    Create shapefile of ASTER footprint from .met file.
-    
-    Parameters
-    ----------
-    gran_name : str
-        ASTER granule name to use; assumed to also be the folder in which .met file(s) are stored.
-    proj4 : str or int, optional
-        Proj4 representation for coordinate system to use [default: '+units=m +init=epsg:4326', WGS84 Lat/Lon].
-    indir : str, optional
-        Directory to search in [default: current working directory].
-    polyout : bool, optional
-        Create a shapefile of the footprint in the input directory [True].
+    Create shapefile of ASTER footprint from .met file
 
-    Returns
-    -------
-    footprint : Polygon
-        shapely Polygon representing ASTER footprint, re-projected to given geometry.
+    :param gran_name: ASTER granule name to use; assumed to also be the folder in which .met file(s) are stored.
+    :param proj4: proj4 representation for coordinate system to use [default: '+units=m +init=epsg:4326', WGS84 Lat/Lon].
+    :param indir: Directory to search in [default: current working directory].
+    :param polyout: Create a shapefile of the footprint in the input directory [True].
+
+    :type gran_name: str
+    :type proj4: str, dict
+    :type indir: str
+    :type polyout: bool
+    :returns footprint: shapely Polygon representing ASTER footprint, reprojected to given CRS.
     """
 
     ### MADE AN ADJUSTMENT TO ASSUME THAT THE .MET FILE IS IN THE CURRENT FOLDER OF OPERATION
@@ -233,16 +215,10 @@ def get_aster_footprint(gran_name, proj4='+units=m +init=epsg:4326', indir=None,
 def orient_footprint(fprint):
     """
     Orient ASTER footprint coordinates to be clockwise, with upper left coordinate first.
-    
-    Parameters
-    ----------
-    fprint : Polygon
-        Footprint polygon to orient.
-    
-    Returns
-    -------
-    o_fprint : Polygon
-        Re-oriented copy of input footprint.
+
+    :param fprint: footprint to orient
+    :type fprint: shapely polygon
+    :returns o_fprint: re-oriented copy of input footprint.
     """
     # orient the footprint coordinates so that they are clockwise
     fprint = orient(fprint, sign=-1)
@@ -258,19 +234,14 @@ def orient_footprint(fprint):
 
 def get_track_angle(fprint, track_dist):
     """
-    Calculate the angle made by the ASTER flight track from the footprint.
-    
-    Parameters
-    ----------
-    fprint : shapely Polygon
-        Footprint of ASTER scene.
-    track_dist : float
-        Distance along flight track within scene to calculate angle.
-        
-    Returns
-    -------
-    track_angle : float
-        Angle, in degrees, of flight track.
+    Calculate the angle made by the ASTER flight track from scene footprint.
+
+    :param fprint: Footprint of ASTER scene
+    :param track_dist: Distance along flight track within scene at which to calculate angle.
+    :type fprint: shapely Polygon
+    :type track_dist: float
+
+    :returns track_angle: angle, in degrees, of flight track
     """
     # orient the footprint
     fprint = orient_footprint(fprint)
@@ -301,31 +272,25 @@ def preprocess(mst_dem, slv_dem, glacmask=None, landmask=None, work_dir='.', out
     ASTER (slave) and external (master) DEMs/ICESat, and shifts the orthoimage and correlation mask
     based on the offset calculated. Results are saved by default in a folder called 'coreg' which
     is moved to the 'bias_removal' folder at the end of this function
-    
-    Parameters
-    ----------
-    mst_dem : string or GeoImg
-        Path to filename or GeoImg dataset representing external "master" DEM.
-    slv_dem : string or GeoImg
-        Path to filename or GeoImg dataset representing ASTER DEM.
-    glacmask : string, optional
-        Path to shapefile representing points to exclude from co-registration
+
+    :param mst_dem: Path to filename or GeoImg dataset representing external "master" DEM or ICESat dataset.
+    :param slv_dem: Path to filename or GeoImg dataset representing ASTER DEM
+    :param glacmask: Path to shapefile representing areas to exclude from co-registration
         consideration (i.e., glaciers).
-    landmask : string, optional
-        Path to shapefile representing points to include in co-registration
+    :param landmask: Path to shapefile representing areas to include in co-registration
         consideration (i.e., stable ground/land).
-    cwd : string, optional
-        Working directory to use [Assumes '.'].
-    out_dir : string, optional
-        Output directory for the new coregistration folder    
-    Returns
-    -------
-    mst_coreg : GeoImg
-        GeoImg dataset represeting co-registered external "master" DEM.
-    slv_coreg : GeoImg
-        GeoImg dataset representing co-registered ASTER "slave" DEM.
-    shift_params : tuple
-        Tuple containing x, y, and z shifts calculated during co-regisration process.
+    :param work_dir: Working directory to use [Assumes '.'].
+    :param out_dir: Output directory for the new coregistration folder
+    :param pts: True if mst_dem is point data, False if mst_dem is a DEM.
+    :type mst_dem: str, pybob.Geoimg, pybob.ICESat
+    :type slv_dem: str, pybob.GeoImg
+    :type glacmask: str
+    :type landmask: str
+    :type cwd: str
+    :type out_dir: str
+
+    :returns mst_coreg, slv_coreg, shift_params: co-registered master, slave datasets, as well as a tuple containing
+        x,y,z shifts calculated during co-registration process.
     """
     # if the output directory does not exist, create it.
     # out_dir = os.path.sep.join([work_dir, out_dir])
@@ -378,7 +343,22 @@ def preprocess(mst_dem, slv_dem, glacmask=None, landmask=None, work_dir='.', out
 
 def mask_raster_threshold(rasname, maskname, outfilename, threshold=50, datatype=np.float32):
     """
-    filters values in rasname if maskname is less then threshold
+    Filter values in an input raster if the correlation mask raster falls below a threshold value. Removes noise from
+    low-correlation areas (i.e., clouds) using a binary opening operation.
+
+    :param rasname: path to raster (i.e., DEM) to mask, or GeoImg object.
+    :param maskname: path to correlation raster to determine mask values, or GeoImg object.
+    :param outfilename: filename to write masked raster to.
+    :param threshold: correlation value to determine masked values.
+    :param datatype: datatype to save raster as.
+
+    :type rasname: str, pybob.GeoImg
+    :type maskname: str, pybob.GeoImg
+    :type outfilename: str
+    :type threshold: float
+    :type datatype: numpy datatype
+
+    :returns masked_ras: GeoImg of masked input raster.
     """
     myras = GeoImg(rasname)
     mymask = GeoImg(maskname)
@@ -391,9 +371,16 @@ def mask_raster_threshold(rasname, maskname, outfilename, threshold=50, datatype
     return myras
 
 
-def RMSE(indata):
-    """ Return root mean square of indata."""
+# can probably just import this from pybob.coreg_tools, no?
+def rmse(indata):
+    """
+    Return root mean square of input differences.
 
+    :param indata: differences to calculate RMSE of
+    :type indata: array-like
+
+    :returns data_rmse: RMSE of input data.
+    """
     # add 3x std dev filter
     #    indata[np.abs(indata)>3*np.nanstd(indata)] = np.nan
 
@@ -403,10 +390,15 @@ def RMSE(indata):
 
 def calculate_dH(mst_dem, slv_dem, pts):
     """
-    # mst_dem and slv_dem must be GeoIMG objects with same pixels
-    # 1) calculates the differences
-    # 2) Runs a 5x5 pixel median filter
-    # 3) Hard Removes values > 100
+    Calculate difference between master and slave DEM. Master and slave DEMs must have the same shape. First,
+    differences are calculated, then data are filtered using a 5x5 median filter, and differences greater than 100 m,
+    or differences on high (>50deg) or low (< 0.5deg) slopes are removed.
+
+    :param mst_dem: master DEM (i.e., external DEM/ICESat data)
+    :param slv_dem: slave DEM (i.e., ASTER scene)
+    :param pts: True if master DEM is ICESat data, False if master DEM is a DEM.
+
+    :returns: dH: filtered elevation differences between master and slave DEMs.
     """
     if not pts:
         zupdate = np.ma.array(mst_dem.img.data - slv_dem.img.data, mask=slv_dem.img.mask)
@@ -464,10 +456,20 @@ def calculate_dH(mst_dem, slv_dem, pts):
     return dH
 
 
-def get_xy_rot(mst_dem, myang):
+def get_xy_rot(dem, myang):
+    """
+    Rotate x, y axes of image to get along- and cross-track distances.
+
+    :param dem: DEM to get x,y positions from.
+    :param myang: angle by which to rotate axes
+    :type dem: pybob GeoImg
+    :type myang: float
+
+    :returns xxr, yyr: arrays corresponding to along (x) and cross (y) track distances.
+    """
     # creates matrices for along and across track distances from a reference dem and a raster angle map (in radians)
 
-    xx, yy = mst_dem.xy(grid=True)
+    xx, yy = dem.xy(grid=True)
     xx = xx - np.min(xx)
     yy = yy - np.min(yy)
     # xxr = np.multiply(xx,np.rad2deg(np.cos(myang))) + np.multiply(-1*yy,np.rad2deg(np.sin(myang)))
@@ -491,19 +493,17 @@ def get_xy_rot(mst_dem, myang):
 
 
 def get_atrack_coord(mst_dem, myangN, myangB):
-    """ Creates numpy matrices for along and across track distances from MMASTER 
-    dem and angle maps. 
-    
-    Parameters
-    ----------
-    mst_dem :   GeoImg of DEM
-    myangN  :   GeoImg of MMASTER 3N track angle (in degrees by default)
-    myangB  :   GeoImg of MMASTER 3B track angle (in degrees by default)
+    """
+    Createx numpy arrays for along- and cross-track distances from DEM and angle maps.
 
-    Returns
-    -------
-    yyn : numpy array of along track distance in 3N track direction
-    yyb : numpy array of along track distance in 3B track direction    
+    :param dem: DEM to get x,y positions from
+    :param myangN: MMASTER 3N track angle (i.e., track angle in nadir image)
+    :param myangB: MMASTER 3B track angle (i.e., track angle in back-looking image)
+    :type dem: pybob GeoImg
+    :type myangN: pybob GeoImg
+    :type myangB: pybob GeoImg
+
+    :returns yyn, yyb: along-track distances in 3N and 3B track directions.
     """
 
     myangN = np.deg2rad(myangN.img)
@@ -534,7 +534,21 @@ def get_atrack_coord(mst_dem, myangN, myangB):
 
 def get_fit_variables(mst_dem, slv_dem, xxn, pts, xxb=None):
     """
-    prepare input variables for fitting. 
+    Get input variables for bias fitting.
+
+    :param mst_dem: Master DEM to use for fitting
+    :param slv_dem: Slave DEM to use for fitting
+    :param xxn: along- or cross-track distance in the nadir track direction
+    :param pts: True if mst_dem is ICESat points, False if mst_dem is a GeoImg.
+    :param xxb: along- or cross-track direction in the back-looking track direction. If not provided, fit variables are
+        provided only for one angle.
+    :type mst_dem: pybob GeoImg, ICESat
+    :type slv_dem: pybob GeoImg
+    :type xxn: array-like
+    :type pts: bool
+    :type xxb: array-like
+    :returns xx, dH, grp_xx, grp_dH, xx2, grp_sts: track distance, elevation differences, group distances, group
+        median dH group values, group distances in the back-looking direction, group statistics.
     """
     if not pts:
         dHmat = calculate_dH(mst_dem, slv_dem, pts)
@@ -587,6 +601,17 @@ def fitfun_polynomial(xx, params):
 
 
 def robust_polynomial_fit(xx, yy):
+    """
+    Given sample data xx, yy, compute a robust polynomial fit to the data. Order is chosen automatically by comparing
+    residuals for multiple fit orders.
+
+    :param xx: input x data (typically across-track distance)
+    :param yy: input y data (typically elevation differences)
+    :type xx: array-like
+    :type yy: array-like
+
+    :returns coefs, order: polynomial coefficients and order for the best-fit polynomial
+    """
     print("Original Sample size :", yy.size)
     # mykeep=np.isfinite(yy) and np.isfinite(xx)
     #    mykeep = np.logical_and(np.isfinite(yy), np.isfinite(xx))
@@ -727,6 +752,18 @@ def fitfun_sumofsin(xx, p):
 
 
 def fitfun_sumofsin_2angle(xxn, xxb, p):
+    """
+    Fit sum of sines function for two track angles.
+
+    :param xxn: along-track distance in nadir direction
+    :param xxb: along-track distance in back-looking direction
+    :param p: sum of sines parameters
+    :type xxn: array-like
+    :type yyn: array-like
+    :type p: array-like
+
+    :returns sum_of_sines: sum of sines evaluated at the given along-track distances.
+    """
     p = np.squeeze(np.asarray(p))
     aix = np.arange(0, p.size, 6)
     bix = np.arange(1, p.size, 6)
@@ -856,8 +893,8 @@ def final_histogram(dH0, dH1, dH2, dHfinal, pp):
     jjj1, jjj2 = np.histogram(dH2[np.isfinite(dH2)], bins=mybins, range=(-60, 60))
     k1, k2 = np.histogram(dHfinal[np.isfinite(dHfinal)], bins=mybins, range=(-60, 60))
 
-    stats0 = [np.nanmean(dH0), np.nanmedian(dH0), np.nanstd(dH0), RMSE(dH0)]
-    stats_fin = [np.nanmean(dHfinal), np.nanmedian(dHfinal), np.nanstd(dHfinal), RMSE(dHfinal)]
+    stats0 = [np.nanmean(dH0), np.nanmedian(dH0), np.nanstd(dH0), rmse(dH0)]
+    stats_fin = [np.nanmean(dHfinal), np.nanmedian(dHfinal), np.nanstd(dHfinal), rmse(dHfinal)]
 
     plt.plot(j2[1:], j1, 'k-', linewidth=2, label="original")
     plt.plot(jj2[1:], jj1, 'b-', linewidth=2, label="After X-track")
@@ -911,7 +948,7 @@ def correct_cross_track_bias(mst_dem, slv_dem, inang, pp, pts=False):
     pcoef, myorder = robust_polynomial_fit(xx, dH)
     polymod = fitfun_polynomial(xx, pcoef)
     polymod_grp = fitfun_polynomial(xx2, pcoef)
-    polyres = RMSE(dH - polymod)
+    polyres = rmse(dH - polymod)
     print("Cross track robust Polynomial RMSE (all data): ", polyres)
 
     #   # USING POLYFIT With ALL/GROUPED data
@@ -1153,30 +1190,33 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
                          pts=False, work_dir='.', out_dir='biasrem',
                          return_geoimg=True, write_log=False):
     """
-    Removes cross track and along track biases from MMASTER DEMs. 
+    Removes cross track and along track biases from MMASTER DEMs.
 
-    Parameters
-    ----------
-    mst_DEM : string or GeoImg
-        Path to filename or GeoImg dataset representing "master" DEM or ICESat.
-    slv_DEM : string or GeoImg
-        Path to filename or GeoImg dataset representing "slave" DEM (developed for ASTER).
-    glacmask : string, optional
-        Path to shapefile representing points to exclude from co-registration
+    :param mst_dem: Path to filename or GeoImg dataset representing "master" DEM or ICESat.
+    :param slv_dem: Path to filename or GeoImg dataset representing "slave" DEM (developed for ASTER).
+    :param glacmask: Path to shapefile representing points to exclude from co-registration
         consideration (i.e., glaciers).
-    landmask : string, optional
-        Path to shapefile representing points to include in co-registration
+    :param landmask: Path to shapefile representing points to include in co-registration
         consideration (i.e., stable ground/land).
-    pts : bool, optional
-        If True, program assumes that masterDEM represents point data (i.e., ICESat),
+    :param pts: If True, program assumes that masterDEM represents point data (i.e., ICESat),
         as opposed to raster data. Slope/aspect are then calculated from slaveDEM.
         masterDEM should be a string representing an HDF5 file continaing ICESat data.
-    out_dir : string, optional
-        Location to save bias removal outputs. [default to the current directory]
-    return_geoimg : bool, optional
-        Return GeoImg objects of the corrected slave DEM and the co-registered master DEM [True]
-    write_log : bool, optional
-        Re-direct stdout, stderr to a log file in the work directory [False]
+    :param work_dir: Location where output files and directory should be saved [.]
+    :param out_dir: Location to save bias removal outputs. ['biasrem']
+    :param return_geoimg: Return GeoImg objects of the corrected slave DEM and the co-registered master DEM [True]
+    :param write_log: Re-direct stdout, stderr to a log file in the work directory [False]
+
+    :type mst_dem: str, pybob.GeoImg, pybob.ICESat
+    :type slv_dem: str, pybob.GeoImg
+    :type glacmask: str
+    :type landmask: str
+    :type pts: bool
+    :type work_dir: str
+    :type out_dir: str
+    :type return_geoimg: bool
+    :type write_log: bool
+
+    :returns slv_corr, mst_coreg: corrected MMASTER DEM, co-registered master DEM (if return_geoimg)
     """
     orig_dir = os.getcwd()
     os.chdir(work_dir)
