@@ -1,0 +1,21 @@
+from setuptools import setup
+
+setup(name='pymmaster',
+      version='0.1',
+      description='',
+      url='https://github.com/luc-girod/MMASTER-workflows',
+      author='Bob McNabb',
+      author_email='robertmcnabb@gmail.com',
+      license='GPL-3.0',
+      packages=['pymmaster'],
+      install_requires=['numpy', 'scipy', 'matplotlib', 'fiona', 'pyvips',
+                        'shapely', 'opencv-python', 'pandas', 'geopandas',
+                        'scikit-image', 'gdal', 'h5py', 'pyproj', 'descartes',
+                        'pybob', 'netCDF4', 'xarray', 'numba'],
+      scripts=['bin/apply_mmaster_corrections.py', 'bin/batch_coregister_tiles.py', 'bin/bias_correct_tiles.py',
+               'bin/create_micmac_xml.py', 'bin/create_mmaster_stack.py', 'bin/mmaster_bias_correction.py',
+               'bin/mosaic_micmac_tiles.py', 'bin/sort_aster_strips.py', 'bin/CleanMicMac.sh',
+               'bin/Link_MMASTER_Files.sh', 'bin/PostProcessMicMac.sh', 'bin/process_mmaster.sh',
+               'bin/RunMicMacAster_batch.sh', 'bin/WorkFlow_WaterMask.sh', 'bin/WorkFlowASTER.sh',
+               'bin/WorkFlowASTER_onescene.sh', 'bin/WorkFlowASTER_onestrip.sh'],
+      zip_safe=False)
