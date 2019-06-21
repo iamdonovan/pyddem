@@ -1,18 +1,19 @@
+from __future__ import print_function
 import os
+import time
 os.environ["OMP_NUM_THREADS"] = "1" # export OMP_NUM_THREADS=4
 os.environ["OPENBLAS_NUM_THREADS"] = "1" # export OPENBLAS_NUM_THREADS=4 
 os.environ["MKL_NUM_THREADS"] = "1" # export MKL_NUM_THREADS=6
 os.environ["VECLIB_MAXIMUM_THREADS"] = "1" # export VECLIB_MAXIMUM_THREADS=4
 os.environ["NUMEXPR_NUM_THREADS"] = "1" # export NUMEXPR_NUM_THREADS=6
-from itertools import chain
-import time
 import numpy as np
+import gdal
+from itertools import chain
 from scipy.interpolate import interp1d
 from sklearn.linear_model import LinearRegression
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, ConstantKernel as C, RationalQuadratic as RQ
 from numba import jit
-import gdal
 from pybob.GeoImg import GeoImg
 from pybob.image_tools import create_mask_from_shapefile
 from warnings import filterwarnings
@@ -74,6 +75,7 @@ def detrend(t_vals, data, ferr):
         ferr = ferr[isin]
     
     return reg
+
 
 def iterative_fit(time_vals, data_vals, err_vals, time_pred):
     k1 = C(2.0, (1e-2, 1e2)) * RBF(10, (5, 30)) # other kernels to try to add here?
@@ -139,15 +141,15 @@ def fit_data(data, t_vals, uncert):
     fdata = fdata - reg.predict(t_scale.reshape(-1, 1)).squeeze()
     l_trend = reg.predict(t_pred.reshape(-1, 1)).squeeze()
     
-    #std_nmad_rat = np.std(fdata) / nmad(fdata) 
-    #if std_nmad_rat > 20: 
+    # std_nmad_rat = np.std(fdata) / nmad(fdata)
+    # if std_nmad_rat > 20:
     #    isout = np.abs(fdata) > 10 * nmad(fdata) 
-    #else: 
+    # else:
     #    isout = np.abs(fdata) > 4 * np.std(fdata) 
 
-    #fdata = fdata[~isout]
-    #t_scale = t_scale[~isout]
-    #ferr = ferr[~isout]
+    # fdata = fdata[~isout]
+    # t_scale = t_scale[~isout]
+    # ferr = ferr[~isout]
 
     y_pred, sigma, z_score, good_vals = iterative_fit(t_scale, fdata, ferr, t_pred)
     return y_pred + l_trend, sigma, z_score, good_vals
@@ -185,4 +187,3 @@ def stitcher(outputs, nblocks, overlap=0):
             outind = j + i*nblocks[1]
             stitched[i] = np.concatenate((stitched[i], outputs[outind]), axis=2)
     return np.concatenate(tuple(stitched), axis=1)
-
