@@ -4,8 +4,8 @@ pymmaster.mmaster_tools provides most of the routines used for removing jitter-r
 
 .. _MicMac ASTER: https://www.mdpi.com/2072-4292/9/7/704
 """
-#from __future__ import print_function
-#from future_builtins import zip
+from __future__ import print_function
+# from future_builtins import zip
 from functools import partial
 import os
 import sys
