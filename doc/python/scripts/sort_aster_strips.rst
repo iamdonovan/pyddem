@@ -1,3 +1,5 @@
+.. _sort_aster_strips:
+
 sort_aster_strips.py
 =================================
 

@@ -6,10 +6,14 @@
 Welcome to pymmaster's documentation!
 =====================================
 
+This is the documentation for MMASTER-workflows and pymmaster, a set of tools for the processing of improved
+DEMs from ASTER.
+
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
 
+   setup
+   tutorial
    bash/index
    python/index
 
