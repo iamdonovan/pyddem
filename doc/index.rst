@@ -14,8 +14,7 @@ DEMs from ASTER.
 
    setup
    tutorial
-   bash/index
-   python/index
+   pymmaster/index
 
 Indices and tables
 ==================
