@@ -55,7 +55,7 @@ def main():
         corr = GeoImg(args.corr_mask)
         dem.img[corr.img < args.threshold] = np.nan
 
-    ang_mapN = GeoImg('TrackAngleMap_3N.tif',)
+    ang_mapN = GeoImg('TrackAngleMap_3N.tif')
     ang_mapB = GeoImg('TrackAngleMap_3B.tif')
     ang_mapNB = ang_mapN.copy(new_raster=np.array(np.divide(ang_mapN.img + ang_mapB.img, 2)))
 
