@@ -18,6 +18,7 @@ from pymmaster.mmaster_tools import mmaster_bias_removal
 def batch_wrapper(arg_dict):
     return mmaster_bias_removal(**arg_dict)
 
+
 def _argparser():
     parser = argparse.ArgumentParser(description="Run MMASTER post-processing bias corrections, given external elevation data.")
     # things to add: input directory, master dem and/or elevation data
@@ -28,7 +29,7 @@ def _argparser():
                         help="directory/directories where final, georeferenced images are located.")
     parser.add_argument('-s', '--slavedem', type=str, default=None,
                         help='(optional) name of DEM to correct. By default, mmaster_bias_correction.py\
-                        looks for MMASTER DEMs of the form AST_L1A_..._Z.tif')
+                        looks for MMASTER DEMs of the form AST_L1A_003..._Z.tif')
     parser.add_argument('-a', '--exc_mask', type=str, default=None,
                         help='exclusion mask. Areas inside of this shapefile (i.e., glaciers)\
                         will not be used for coregistration [None]')
