@@ -14,7 +14,34 @@
 #
 import os
 import sys
+
+class Mock(MagicMock):
+    @classmethod
+    def __getattr__(cls, name):
+        return MagicMock()
+
+
+autodoc_mock_imports = ['numpy', 'scipy', 'matplotlib', 'fiona', 'cv2', 'pyvips', 'lxml', 'matplotlib.pyplot',
+                        'shapely', 'opencv-python', 'pandas', 'geopandas', 'fiona.crs', 'scipy.interpolate',
+                        'shapely.geometry.polygon', 'shapely.geometry', 'shapely.ops',  'shapely.strtree',
+                        'skimage', 'gdal', 'h5py', 'pyproj', 'osgeo', 'llc', 'descartes', 'lxml.etree',
+                        'numpy.polynomial.polynomia', 'matplotlib.pylab', 'skimage.morphology',
+                        'scipy.ndimage.filters', 'matplotlib.backends.backend_pdf', 'pybob.coreg_tools', 'pybob.GeoImg',
+                        'pybob.image_tools', 'pybob.plot_tools', 'mpl_toolkits.axes_grid1', 'netCDF4', 'xarray',
+                        'itertools', 'sklearn.linear_model', 'sklearn.gaussian_process', 'numba', 'skimage.io'
+                        'scipy.ndimage.morphology', 'sklearn.gaussian_process.kernels', ]
+
+sys.modules.update((mod_name, Mock()) for mod_name in autodoc_mock_imports)
 sys.path.insert(0, os.path.abspath('..'))
+
+
+def skip(app, what, name, obj, would_skip, options):
+    if name == "__init__":
+        return False
+    return would_skip
+
+def setup(app):
+    app.connect("autodoc-skip-member", skip)
 
 
 # -- Project information -----------------------------------------------------
