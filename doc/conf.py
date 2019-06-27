@@ -28,9 +28,10 @@ autodoc_mock_imports = ['numpy', 'scipy', 'matplotlib', 'fiona', 'cv2', 'pyvips'
                         'shapely.geometry.polygon', 'shapely.geometry', 'shapely.ops',  'shapely.strtree',
                         'skimage', 'gdal', 'h5py', 'pyproj', 'osgeo', 'llc', 'descartes', 'lxml.etree', 'xarray',
                         'numpy.polynomial.polynomial', 'matplotlib.pylab', 'skimage.morphology', 'pybob', 'sklearn'
-                        'scipy.ndimage.filters', 'matplotlib.backends.backend_pdf', 'pybob.coreg_tools', 'pybob.GeoImg',
-                        'pybob.image_tools', 'pybob.plot_tools', 'mpl_toolkits', 'mpl_toolkits.axes_grid1', 'netCDF4',
-                        'itertools', 'sklearn.linear_model', 'sklearn.gaussian_process', 'numba', 'skimage.io',
+                        'scipy.ndimage.filters', 'matplotlib.backends', 'matplotlib.backends.backend_pdf',
+                        'pybob.coreg_tools', 'pybob.GeoImg', 'pybob.image_tools', 'pybob.plot_tools',
+                        'mpl_toolkits', 'mpl_toolkits.axes_grid1', 'netCDF4',
+                        'sklearn.linear_model', 'sklearn.gaussian_process', 'numba', 'skimage.io',
                         'scipy.ndimage.morphology', 'sklearn.gaussian_process.kernels', 'ogr', 'numpy.polynomial',
                         'scipy.ndimage', 'pybob.bob_tools', 'lxml.builder']
 
