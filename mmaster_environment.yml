@@ -140,6 +140,7 @@ dependencies:
   - pcre=8.42=h439df22_0
   - pexpect=4.6.0=py37_0
   - pickleshare=0.7.5=py37_0
+  - pip=19.1.1=py37_0
   - pixman=0.34.0=hceecf20_3
   - poppler=0.65.0=h581218d_1
   - poppler-data=0.4.9=0
