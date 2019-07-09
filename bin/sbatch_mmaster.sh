@@ -5,7 +5,7 @@
 #SBATCH --time=240:00:00
 ##SBATCH -w, --nodelist=compute1
 #SBATCH --mail-type=FAIL
-#SBATCH --mail-user=username@gmail.com
+#SBATCH --mail-user=romain.hugonnet@gmail.com
 
 #@author: hugonnet
 #SLURM wrapper for utm zone processing of MicMac/MMASTER (Luc Girod, Chris Nuth, Robert McNabb)
