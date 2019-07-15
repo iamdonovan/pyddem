@@ -1,5 +1,6 @@
 from __future__ import print_function
-import os, sys
+import os
+import sys
 import time
 os.environ["OMP_NUM_THREADS"] = "1"  # export OMP_NUM_THREADS=4
 os.environ["OPENBLAS_NUM_THREADS"] = "1"  # export OPENBLAS_NUM_THREADS=4
@@ -205,9 +206,6 @@ def iterative_gpr(time_vals, data_vals, err_vals, time_pred, opt=False, kernel=N
         # long departure from linearity with a RQK
         # k2 = RQ(30)
         # kernel = k1 + k2
-
-    else:
-        kernel = kernel
 
     # initializing
     n_out = 1
