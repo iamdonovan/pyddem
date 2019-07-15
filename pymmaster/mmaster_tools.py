@@ -22,7 +22,8 @@ import matplotlib.pylab as plt
 import pandas as pd
 import scipy.optimize as optimize
 import time
-import zipfile, shutil
+import zipfile
+import shutil
 from skimage.morphology import disk
 from scipy.ndimage.morphology import binary_opening, binary_dilation
 from scipy.ndimage.filters import median_filter
