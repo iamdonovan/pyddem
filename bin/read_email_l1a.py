@@ -16,14 +16,15 @@ for gmail:
 need to put everything under a label and authorize access to "less secure apps" in security
 """
 
-#TODO: script MBOX only works in Python 2.7 apparently
+# TODO: script MBOX only works in Python 2.7 apparently
 from __future__ import print_function
 import mailbox
 import imaplib
 import email
 import csv
 
-def getbody(message):  #getting plain text 'email body'
+
+def getbody(message):  # getting plain text 'email body'
     body = None
     if message.is_multipart():
         for part in message.walk():
@@ -39,18 +40,18 @@ def getbody(message):  #getting plain text 'email body'
 
 
 def read_email_from_mbox(in_mbox):
-
     print('Reading MBOX file...')
     mbox = mailbox.mbox(in_mbox)
     listPullDir = list()
 
     print('IDing PullDirs links...')
-    for message in mbox: #looping through stacked messages
-        tmp=getbody(message)
-        pos1=str.find(tmp,'https://e4ftl01.cr.usgs.gov/PullDir/') #search root link in email
-        pos2=str.find(tmp[pos1:len(tmp)],'\r\nDownload ZIP file of packaged order:') #search first end in remaining message
+    for message in mbox:  # looping through stacked messages
+        tmp = getbody(message)
+        pos1 = str.find(tmp, 'https://e4ftl01.cr.usgs.gov/PullDir/')  # search root link in email
+        pos2 = str.find(tmp[pos1:len(tmp)],
+                        '\r\nDownload ZIP file of packaged order:')  # search first end in remaining message
 
-        PullDir=tmp[pos1:pos1+pos2]
+        PullDir = tmp[pos1:pos1 + pos2]
         listPullDir.append(PullDir)
 
     return listPullDir
@@ -64,7 +65,7 @@ def read_email_from_gmail(label):
     SMTP_PORT = 993
     try:
         mail = imaplib.IMAP4_SSL(SMTP_SERVER)
-        mail.login(FROM_EMAIL,FROM_PWD)
+        mail.login(FROM_EMAIL, FROM_PWD)
         mail.select(label)
 
         type, data = mail.search(None, 'ALL')
@@ -77,16 +78,15 @@ def read_email_from_gmail(label):
         listPullDir = []
 
         print('Number of emails: ' + str(latest_email_id))
-        for i in range(latest_email_id,first_email_id-1, -1):
-            print('Email number ',i,'out of',latest_email_id)
-            typ, data = mail.fetch(i, '(RFC822)' )
+        for i in range(latest_email_id, first_email_id - 1, -1):
+            print('Email number ', i, 'out of', latest_email_id)
+            typ, data = mail.fetch(i, '(RFC822)')
 
             for response_part in data:
                 if isinstance(response_part, tuple):
                     msg = email.message_from_string(response_part[1])
-                    tmp= msg.get_payload()
+                    tmp = msg.get_payload()
                     pos1 = str.find(tmp, 'https://e4ftl01.cr.usgs.gov/PullDir/')  # search root link in email
-
 
                     pos2 = str.find(tmp[pos1:len(tmp)],
                                     '\r\nDownload ZIP file of packaged order:')  # search first end in remaining message
@@ -99,25 +99,23 @@ def read_email_from_gmail(label):
 
     return listPullDir
 
-def writelistPullDir(out_list,listPullDir):
 
-    print('Writing links to csv list '+ out_list +'...')
-    with open(out_list,'wd') as file:
+def writelistPullDir(out_list, listPullDir):
+    print('Writing links to csv list ' + out_list + '...')
+    with open(out_list, 'wd') as file:
         writer = csv.writer(file, delimiter=',')
         for dir in listPullDir:
             writer.writerow([dir])
 
 
-
 if __name__ == '__main__':
-
-    #mbox solution
+    # mbox solution
     in_mbox = '/home/atom/proj/ww_tvol_study/worldwide/global/L1A_retrieval/LPDAAC_ww2_2.mbox'
     out_csv = '/home/atom/proj/ww_tvol_study/worldwide/global/L1A_retrieval/list_PullDirs_ww2_2.csv'
     listdir = read_email_from_mbox(in_mbox)
     writelistPullDir(out_csv, listdir)
 
-    #gmail solution
+    # gmail solution
     label_name = 'LPDAAC_mails'
     listdir = read_email_from_gmail(label_name)
     writelistPullDir(out_csv, listdir)
