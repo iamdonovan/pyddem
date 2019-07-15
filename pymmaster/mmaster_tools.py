@@ -155,11 +155,8 @@ def reproject_geometry(src_data, src_crs, dst_crs):
     :returns dst_data: reprojected data.
     """
     # unfortunately this requires pyproj>1.95, temporary fix to avoid shambling dependencies in mmaster_environment
-    # src_proj = pyproj.Proj(src_crs)
-    # dst_proj = pyproj.Proj(dst_crs)
-
-    src_proj = pyproj.Proj(init='EPSG:' + str(src_crs))
-    dst_proj = pyproj.Proj(init='EPSG:' + str(dst_crs))
+    src_proj = pyproj.Proj(src_crs)
+    dst_proj = pyproj.Proj(dst_crs)
 
     project = partial(pyproj.transform, src_proj, dst_proj)
     return transform(project, src_data)

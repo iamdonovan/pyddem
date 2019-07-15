@@ -57,6 +57,17 @@ def parse_date(fname, datestr=None, datefmt=None):
 
 
 def get_footprints(filelist, proj4=None):
+    """
+    Get a list of footprints, given a filelist of DEMs.
+
+    :param filelist: List of DEMs to create footprints for.
+    :param proj4: proj4 representation of output CRS. If None, the CRS is chosen from the first DEM loaded. Can also supply
+        an EPSG code as an integer.
+    :type filelist: array-like
+    :type proj4: str, int
+
+    :returns fprints, this_crs: A list of footprints and a proj4 string (or dict) representing the output CRS.
+    """
     fprints = []
     if proj4 is not None:
         if type(proj4) is int:
@@ -72,11 +83,11 @@ def get_footprints(filelist, proj4=None):
         fp = Polygon(tmp.find_corners(mode='xy'))
         fprints.append(reproject_geometry(fp, tmp.proj4, this_proj4))
 
-    return fprints
+    return fprints, this_proj4
 
 
 def get_common_bbox(filelist, epsg=None):
-    fprints = get_footprints(filelist, epsg)
+    fprints, _ = get_footprints(filelist, epsg)
 
     common_fp = cascaded_union(fprints)
     bbox = common_fp.envelope
