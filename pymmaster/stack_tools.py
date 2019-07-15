@@ -234,22 +234,6 @@ def make_geoimg(ds, band=0):
     return GeoImg(dst)
 
 
-# using Python bindings?
-def get_geoimg_nc(fn_nc, var):
-    pass
-
-
-#     ds = gdal.Open(fn_nc,gdal.GA_ReadOnly)
-#     if ds.GetSubDatasets() > 1:
-#         subds = 'NETCDF:"'+fn_nc+'":'+var
-#     else:
-#         print('Variable '+var +' not found in: '+fn_nc)
-#         sys.exit()
-#     ds = None
-#
-#     img = GeoImg(subds)
-
-
 def extract_dem():
     # TODO: stack to GeoImg slice at a time t
     # temporal interpolation choice: linear or neirest neighbour? (for raw stack or fitted stack)
