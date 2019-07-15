@@ -16,13 +16,9 @@ from sklearn.gaussian_process.kernels import RBF, ConstantKernel as C, RationalQ
 from numba import jit
 from pybob.GeoImg import GeoImg
 from pybob.image_tools import create_mask_from_shapefile
+from pybob.ddem_tools import nmad
 from warnings import filterwarnings
 filterwarnings('ignore')
-
-
-def nmad(data):
-    m = np.nanmedian(data)
-    return 1.4826 * np.nanmedian(np.abs(data - m))
 
 
 def get_land_mask(maskshp, ds):
