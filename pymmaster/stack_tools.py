@@ -17,6 +17,7 @@ import datetime as dt
 import gdal
 import netCDF4
 import geopandas as gpd
+import xarray as xr
 from shapely.geometry.polygon import Polygon
 from shapely.ops import cascaded_union
 from shapely.strtree import STRtree
@@ -24,19 +25,11 @@ from osgeo import osr
 from pybob.GeoImg import GeoImg
 from pymmaster.mmaster_tools import reproject_geometry
 from pybob.coreg_tools import dem_coregistration
+from pybob.bob_tools import mkdir_p
 
 
 # TODO: putting it back, need it before creating nco file or it fails, maybe we can put the function in a shell lib in pybob?
-def make_pdirs(dir_path):
-    outdir = os.path.abspath(dir_path)
-    try:
-        os.makedirs(outdir)
-    except OSError as exc:  # Python >2.5
-        if exc.errno == errno.EEXIST and os.path.isdir(outdir):
-            pass
-        else:
-            raise
-
+# added import of mkdir_p from pybob.bob_tools
 
 def read_stats(fname):
     with open(fname, 'r') as f:
@@ -161,7 +154,7 @@ def create_nc(img, outfile='mmaster_stack.nc', clobber=False, t0=None):
     nrows, ncols = img.shape
 
     # nc file creation fails if we don't create manually the parent directory
-    make_pdirs(os.path.dirname(outfile))
+    mkdir_p(os.path.dirname(outfile))
 
     nco = netCDF4.Dataset(outfile, 'w', clobber=clobber)
     nco.createDimension('x', ncols)
@@ -211,17 +204,35 @@ def get_tiles(bounds, master_tiles, s, name):
     return '{}_mst.vrt'.format(name)
 
 
-# #TODO: have you written something for this already? NETCDF -> GeoImg ; won't spend too much time on it just in case
-# using gdal translate?
-def create_geoimg_from_stack(fn_nc, fn_img):
-    pass
+def make_geoimg(ds, band=0):
+    """
+    Create a GeoImg representation of a given band from an xarray dataset.
 
+    :param ds: xarray dataset to read shape, extent, CRS values from.
+    :param band: band number of xarray dataset to use
 
-#         ds = gdal.Open(fn_nc,gdal.GA_ReadOnly)
-#         ds_out = gdal.GetDriverByName('MEM').Create('')
-#         opts = gdal.TranslateOptions(format='MEM',bandList=[1])
-#         gdal.Translate(ds_out, ds, options=opts)
-#         ds = None
+    :type ds: xarray.Dataset
+    :type band: int
+    :returns geoimg: GeoImg representation of the given band.
+    """
+    npix_y, npix_x = ds['z'][band].shape
+    dx = np.round((ds.x.max().values - ds.x.min().values) / float(npix_x))
+    dy = np.round((ds.y.min().values - ds.y.max().values) / float(npix_y))
+
+    newgt = (ds.x.min().values - 0, dx, 0, ds.y.max().values - 0, 0, dy)
+
+    drv = gdal.GetDriverByName('MEM')
+    dst = drv.Create('', npix_x, npix_y, 1, gdal.GDT_Float32)
+
+    sp = dst.SetProjection(ds.crs.spatial_ref)
+    sg = dst.SetGeoTransform(newgt)
+
+    wa = dst.GetRasterBand(1).WriteArray(ds['z'][band].values)
+    md = dst.SetMetadata({'Area_or_point': 'Point'})
+    del wa, sg, sp, md
+
+    return GeoImg(dst)
+
 
 # using Python bindings?
 def get_geoimg_nc(fn_nc, var):
