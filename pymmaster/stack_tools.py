@@ -28,9 +28,6 @@ from pybob.coreg_tools import dem_coregistration
 from pybob.bob_tools import mkdir_p
 
 
-# TODO: putting it back, need it before creating nco file or it fails, maybe we can put the function in a shell lib in pybob?
-# added import of mkdir_p from pybob.bob_tools
-
 def read_stats(fname):
     with open(fname, 'r') as f:
         lines = f.readlines()
@@ -59,20 +56,21 @@ def parse_date(fname, datestr=None, datefmt=None):
     return dt.datetime.strptime(datestr, datefmt)
 
 
-def get_footprints(filelist, epsg=None):
+def get_footprints(filelist, proj4=None):
     fprints = []
-    if epsg is not None:
-        this_epsg = epsg
+    if proj4 is not None:
+        if type(proj4) is int:
+            this_proj4 = {'init': 'epsg:{}'.format(proj4)}
+        else:
+            this_proj4 = proj4
     else:
         tmp = GeoImg(filelist[0])
-        this_epsg = tmp.epsg
+        this_proj4 = tmp.proj4
 
     for f in filelist:
         tmp = GeoImg(f)
         fp = Polygon(tmp.find_corners(mode='xy'))
-        print(tmp.epsg)
-        print(this_epsg)
-        fprints.append(reproject_geometry(fp, tmp.epsg, this_epsg))
+        fprints.append(reproject_geometry(fp, tmp.proj4, this_proj4))
 
     return fprints
 
