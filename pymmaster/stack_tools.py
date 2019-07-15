@@ -2,7 +2,7 @@
 pymmaster.stack_tools provides tools to create stacks of DEM data, usually MMASTER DEMs.
 """
 from __future__ import print_function
-import os
+import os, sys
 os.environ["OMP_NUM_THREADS"] = "1" # export OMP_NUM_THREADS=4
 os.environ["OPENBLAS_NUM_THREADS"] = "1" # export OPENBLAS_NUM_THREADS=4 
 os.environ["MKL_NUM_THREADS"] = "1" # export MKL_NUM_THREADS=6
@@ -24,6 +24,17 @@ from pybob.GeoImg import GeoImg
 from pymmaster.mmaster_tools import reproject_geometry
 from pybob.coreg_tools import dem_coregistration
 
+#TODO: putting it back, need it before creating nco file or it fails, maybe we can put the function in a shell lib in pybob?
+def make_pdirs(dir_path):
+
+    outdir = os.path.abspath(dir_path)
+    try:
+        os.makedirs(outdir)
+    except OSError as exc:  # Python >2.5
+        if exc.errno == errno.EEXIST and os.path.isdir(outdir):
+            pass
+        else:
+            raise
 
 def read_stats(fname):
     with open(fname, 'r') as f:
@@ -64,6 +75,8 @@ def get_footprints(filelist, epsg=None):
     for f in filelist:
         tmp = GeoImg(f)
         fp = Polygon(tmp.find_corners(mode='xy'))
+        print(tmp.epsg)
+        print(this_epsg)
         fprints.append(reproject_geometry(fp, tmp.epsg, this_epsg))
     
     return fprints
@@ -145,6 +158,9 @@ def create_nc(img, outfile='mmaster_stack.nc', clobber=False, t0=None):
     """
     nrows, ncols = img.shape
 
+    #nc file creation fails if we don't create manually the parent directory
+    make_pdirs(os.path.dirname(outfile))
+
     nco = netCDF4.Dataset(outfile, 'w', clobber=clobber)
     nco.createDimension('x', ncols)
     nco.createDimension('y', nrows)
@@ -163,13 +179,14 @@ def create_nc(img, outfile='mmaster_stack.nc', clobber=False, t0=None):
         to.units = 'days since {}'.format(np.datetime_as_string(t0))
     to.calendar = 'standard'
     to.standard_name = 'date'
-    
-    xo = nco.createVariable('x', 'f4', ('x'))
+
+    #TODO: added chunksizes here, but it doesn't seem to change the slow reading speed in fit_tools...
+    xo = nco.createVariable('x', 'f4', ('x'),chunksizes=[10])
     xo.units = 'm'
     xo.standard_name = 'projection_x_coordinate'
     xo.axis = 'X'
     
-    yo = nco.createVariable('y', 'f4', ('y'))
+    yo = nco.createVariable('y', 'f4', ('y'),chunksizes=[10])
     yo.units = 'm'
     yo.standard_name = 'projection_y_coordinate'
     yo.axis = 'Y'
@@ -190,6 +207,44 @@ def get_tiles(bounds, master_tiles, s, name):
     gdal.BuildVRT('{}_mst.vrt'.format(name), tilelist, resampleAlg='bilinear')
     # print(os.path.sep.join([os.path.abspath(indir), 'tmp_{}.vrt'.format(dname)]))
     return '{}_mst.vrt'.format(name)
+
+# #TODO: have you written something for this already? NETCDF -> GeoImg ; won't spend too much time on it just in case
+#using gdal translate?
+def create_geoimg_from_stack(fn_nc,fn_img):
+    pass
+#         ds = gdal.Open(fn_nc,gdal.GA_ReadOnly)
+#         ds_out = gdal.GetDriverByName('MEM').Create('')
+#         opts = gdal.TranslateOptions(format='MEM',bandList=[1])
+#         gdal.Translate(ds_out, ds, options=opts)
+#         ds = None
+
+#using Python bindings?
+def get_geoimg_nc(fn_nc,var):
+    pass
+#     ds = gdal.Open(fn_nc,gdal.GA_ReadOnly)
+#     if ds.GetSubDatasets() > 1:
+#         subds = 'NETCDF:"'+fn_nc+'":'+var
+#     else:
+#         print('Variable '+var +' not found in: '+fn_nc)
+#         sys.exit()
+#     ds = None
+#
+#     img = GeoImg(subds)
+
+
+def extract_dem():
+    #TODO: stack to GeoImg slice at a time t
+    # temporal interpolation choice: linear or neirest neighbour? (for raw stack or fitted stack)
+    # get interpolated error map as well if sigma exists
+    pass
+
+def extract_ddem():
+    #TODO: same but get dDEM slice into a GeoImg between times t0 and t1
+    pass
+
+def extract_pixel():
+    #TODO: extract stack for 1 pixel given either coordinates, or row/col numbers
+    pass
 
 
 def create_mmaster_stack(filelist, extent=None, res=None, epsg=None, outfile='mmaster_stack.nc', 
@@ -228,6 +283,7 @@ def create_mmaster_stack(filelist, extent=None, res=None, epsg=None, outfile='mm
 
     :returns nco: NetCDF Dataset of stacked DEMs.
     """
+    #TODO: could be practical to use a reference DEM as extent input as well
     if extent is not None:
         if type(extent) in [list, tuple]:
             xmin, xmax, ymin, ymax = extent
@@ -326,7 +382,9 @@ def create_mmaster_stack(filelist, extent=None, res=None, epsg=None, outfile='mm
     else:
         zo[0, :, :] = first_img.img
         if uncert:
-            stats = read_stats(filelist[sorted_inds[0]].replace('.tif', '.txt'))
+            # stats = read_stats(filelist[sorted_inds[0]].replace('.tif', '.txt'))
+            #TODO: after current mmaster_bias_correct, stats file is stored in re-coreg... need to use something less filename dependent
+            stats = read_stats(os.path.join(os.path.dirname(filelist[sorted_inds[0]]),'re-coreg','stats.txt'))
             uo[0] = stats['RMSE']
 
     outind = 1
@@ -358,7 +416,9 @@ def create_mmaster_stack(filelist, extent=None, res=None, epsg=None, outfile='mm
             img = img.reproject(first_img)
             zo[outind, :, :] = img.img
             if uncert:
-                stats = read_stats(filelist[ind].replace('.tif', '.txt'))
+                # stats = read_stats(filelist[ind].replace('.tif', '.txt'))
+                # TODO: same here
+                stats = read_stats(os.path.join(os.path.dirname(filelist[ind]), 're-coreg', 'stats.txt'))
                 uo[outind] = stats['RMSE']
         to[outind] = datelist[ind].toordinal() - dt.date(1900, 1, 1).toordinal()
         go[outind] = os.path.basename(filelist[ind]).rsplit('.tif', 1)[0]

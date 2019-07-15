@@ -1,5 +1,5 @@
 from __future__ import print_function
-import os
+import os, sys
 import time
 os.environ["OMP_NUM_THREADS"] = "1" # export OMP_NUM_THREADS=4
 os.environ["OPENBLAS_NUM_THREADS"] = "1" # export OPENBLAS_NUM_THREADS=4 
@@ -8,14 +8,18 @@ os.environ["VECLIB_MAXIMUM_THREADS"] = "1" # export VECLIB_MAXIMUM_THREADS=4
 os.environ["NUMEXPR_NUM_THREADS"] = "1" # export NUMEXPR_NUM_THREADS=6
 import numpy as np
 import gdal
+import xarray as xr
+import multiprocessing as mp
 from itertools import chain
+from scipy import stats
 from scipy.interpolate import interp1d
 from sklearn.linear_model import LinearRegression
 from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import RBF, ConstantKernel as C, RationalQuadratic as RQ
+from sklearn.gaussian_process.kernels import RBF, ConstantKernel as C, RationalQuadratic as RQ, ExpSineSquared as ESS
 from numba import jit
 from pybob.GeoImg import GeoImg
 from pybob.image_tools import create_mask_from_shapefile
+from pymmaster.stack_tools import create_crs_variable, create_nc
 from pybob.ddem_tools import nmad
 from warnings import filterwarnings
 filterwarnings('ignore')
@@ -45,6 +49,106 @@ def get_land_mask(maskshp, ds):
     
 def parse_epsg(wkt):
     return int(''.join(filter(lambda x: x.isdigit(), wkt.split(',')[-1])))
+
+
+def ols_matrix(X,Y,conf_interv=0.68,conf_slope=0.68):
+
+    #perform independent OLS matricially for optimal processing time
+
+    #inspired from: https://en.wikipedia.org/wiki/Simple_linear_regression#Normality_assumption
+    # and https://fr.wikipedia.org/wiki/M%C3%A9thode_des_moindres_carr%C3%A9s
+    x = X*1.0
+    y = Y*1.0
+
+    x[np.isnan(y)] = np.nan #check for NaNs
+    y[np.isnan(x)] = np.nan #check for NaNs
+
+    moy_X = np.nanmean(x, axis = 0)
+    moy_Y = np.nanmean(y, axis = 0)
+
+    mat_cross_product = (x-moy_X)*(y-moy_Y)
+    sum_mat_cross_product = np.nansum(mat_cross_product, axis = 0)
+
+    mat_X_squared = (x-moy_X)**2
+    sum_mat_X_squared = np.nansum(mat_X_squared, axis = 0)
+
+    beta1 = sum_mat_cross_product/sum_mat_X_squared
+    beta0 = moy_Y - beta1*moy_X
+
+    #confidence interval
+    alpha_interv=1.-conf_interv
+    alpha_slope = 1.-conf_slope
+
+    Y_pred = beta1*x+beta0
+    n = np.sum(~np.isnan(x),axis=0)
+    SSX = sum_mat_X_squared
+    SXY = np.sqrt(np.nansum((y-Y_pred)**2, axis = 0)/(n-2))
+    SE_slope = SXY/np.sqrt(SSX)
+    hi = 1./n+(x-moy_X)**2/SSX
+
+    #quantile of student's t distribution for p=1-alpha/2
+    q_interv = stats.t.ppf(1.-alpha_interv/2, n-2)
+    q_slope = stats.t.ppf(1.-alpha_slope/2, n-2)
+
+    #upper and lower CI:
+    dy = q_interv*SXY*np.sqrt(hi)
+    Yl = Y_pred-dy
+    Yu = Y_pred+dy
+
+    #incert on slope
+    incert_slope = q_slope*SE_slope
+
+    return beta1, beta0, incert_slope, Yl, Yu
+
+def wls_matrix(x, y, w,conf_interv=0.68,conf_slope =0.68):
+
+    #perform independent WLS matricially for optimal processing time
+
+    X = x*1.0
+    Y = y *1.0
+    W = w * 1.0
+
+    Y[np.isnan(W) | np.isnan(X)] = np.nan #check for NaNs
+    X[np.isnan(W) | np.isnan(Y)] = np.nan #check for NaNs
+    W[np.isnan(Y) | np.isnan(X)] = np.nan #check for NaNs
+
+    sum_w = np.nansum(W, axis = 0)
+    moy_X_w = np.nansum(X*W, axis = 0)/sum_w
+    moy_Y_w = np.nansum(Y*W, axis = 0)/sum_w
+
+    mat_cross_product = W*(X-moy_X_w)*(Y-moy_Y_w)
+    sum_mat_cross_product = np.nansum(mat_cross_product, axis = 0)
+
+    mat_X_squared = W*(X-moy_X_w)**2
+    sum_mat_X_squared = np.nansum(mat_X_squared, axis = 0)
+
+    beta1 = sum_mat_cross_product/sum_mat_X_squared
+    beta0 = moy_Y_w - beta1*moy_X_w
+
+    #confidence interval
+    alpha_interv=1.-conf_interv
+    alpha_slope = 1.-conf_slope
+
+    Y_pred = beta1*X+beta0
+    n = np.sum(~np.isnan(X),axis=0)
+    SSX = sum_mat_X_squared
+    SXY = np.sqrt(np.nansum(W*(Y-Y_pred)**2, axis = 0)/(n-2))
+    SE_slope = SXY/np.sqrt(SSX)
+    hi = 1./n+W*(X-moy_X_w)**2/SSX
+
+    #quantile of student's t distribution for p=1-alpha/2
+    q_interv = stats.t.ppf(1.-alpha_interv/2, n-2)
+    q_slope = stats.t.ppf(1.-alpha_slope/2, n-2)
+
+    #get the upper and lower CI:
+    dy = q_interv*SXY*np.sqrt(hi)
+    Yl = Y_pred-dy
+    Yu = Y_pred+dy
+
+    #calculate incert on slope
+    incert_slope = q_slope*SE_slope
+
+    return beta1, beta0, incert_slope, Yl, Yu
     
     
 def interp_data(t, y, sig, interp_t):
@@ -72,12 +176,41 @@ def detrend(t_vals, data, ferr):
     
     return reg
 
+def iterative_gpr(time_vals, data_vals, err_vals, time_pred, opt=False, kernel=None):
 
-def iterative_fit(time_vals, data_vals, err_vals, time_pred):
-    k1 = C(2.0, (1e-2, 1e2)) * RBF(10, (5, 30)) # other kernels to try to add here?
-    k2 = C(1.0, (1e-2, 1e2)) * RBF(1, (1, 5))
-    k3 = C(10, (1e-3, 1e3)) * RQ(length_scale=30, length_scale_bounds=(30, 1e3))
-    kernel = k1 + k2 + k3
+    # TODO: we're doing this for millions (hell billions) of pixels, I think we should put aside the learning
+    #  aspect of GPR for each pixel and only use the determinist aspect focusing on pre-defined kernels (GPR without
+    #  training is equivalent to kriging). We define kernels based on prior knowledge of all the data (and not each pixel):
+    #  DEM measurement error (RMSE) + variability in the regions (modelling long range varios=kernels: seasonality + linearity)?
+    #  also probably more robust when data is scarce on some pixels...
+    #  SAVES 100x the computing time
+    #  problem is estimating the generic covariances: R is practical but Python... I'll look at the pygeostat developping lib
+    #  thus I've put as default: opt=False -> optimizer = None
+    if opt:
+        optimizer = 'fmin_l_bfgs_b'
+        n_restarts_optimizer = 9
+    else:
+        optimizer = None
+        n_restarts_optimizer = 0
+
+    if kernel is None:
+        k1 = C(2.0, (1e-2, 1e2)) * RBF(10, (5, 30)) # other kernels to try to add here?
+        k2 = C(1.0, (1e-2, 1e2)) * RBF(1, (1, 5))
+        k3 = C(10, (1e-3, 1e3)) * RQ(length_scale=30, length_scale_bounds=(30, 1e3))
+        kernel = k1 + k2 + k3
+
+        #if we do without training, we don't care about bounds, simplifies the expressions:
+        #short seasonality departure with a periodic kernel of 1 year
+        # k1 = C(5) * ESS(1,1)
+
+        #long departure from linearity with a RQK
+        # k2 = RQ(30)
+        # kernel = k1 + k2
+
+    else:
+        kernel = kernel
+
+    #initializing
     n_out = 1
     niter = 0
     
@@ -86,7 +219,7 @@ def iterative_fit(time_vals, data_vals, err_vals, time_pred):
     
     while n_out > 0 and num_finite > 2 and niter < 3:
         # if we remove a linear trend, normalize_y should be false...
-        gp = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=9, alpha=err_vals[good_vals], normalize_y=False)
+        gp = GaussianProcessRegressor(kernel=kernel, optimizer=optimizer, n_restarts_optimizer=n_restarts_optimizer, alpha=err_vals[good_vals], normalize_y=False)
         gp.fit(time_vals[good_vals].reshape(-1, 1), data_vals[good_vals].reshape(-1, 1))        
         y_pred, sigma = gp.predict(time_pred.reshape(-1, 1), return_std=True)
         y_, s_ = interp_data(time_pred, y_pred.squeeze(), sigma.squeeze(), time_vals)
@@ -108,24 +241,32 @@ def iterative_fit(time_vals, data_vals, err_vals, time_pred):
         z_score = np.nan * np.zeros(data_vals.shape)
     return y_pred.squeeze(), sigma.squeeze(), z_score, good_vals
 
-    
-def fit_data(data, t_vals, uncert):
+
+#TODO: think we should merge this one with iterative gpr
+def gpr(data, t_vals, uncert, opt=False, kernel=None,tstep=0.25):
     y0 = t_vals[0].astype('datetime64[D]').astype(object).year
     y1 = t_vals[-1].astype('datetime64[D]').astype(object).year + 1.1
-    t_pred = np.arange(y0, y1, 0.25) - y0    
+    t_pred = np.arange(y0, y1, tstep) - y0
 
+    #changed to be consistent with new return (not concatenated)
     if np.count_nonzero(np.isfinite(data)) < 2:
-        return np.nan * np.zeros(np.tile(t_pred, 2).shape)
+        y_pred = np.nan * np.zeros(t_pred.shape)
+        sigma = np.nan * np.zeros(t_pred.shape)
+        z_score = np.nan * np.zeros(t_pred.shape)
+        good_vals = np.isfinite(np.nan * np.zeros(t_pred.size))
+        return y_pred, sigma, z_score, good_vals
+
     ftime = t_vals[np.isfinite(data)]
     fdata = data[np.isfinite(data)]
     ferr = uncert[np.isfinite(data)]
-    # try to remove a linear fit from the data before we fit, then add it back in when we're done.
     total_delta = np.datetime64('{}-01-01'.format(int(y1))) - np.datetime64('{}-01-01'.format(int(y0)))
 
     ftime_delta = np.array([t - np.datetime64('{}-01-01'.format(int(y0))) for t in ftime])
     t_scale = (ftime_delta / total_delta) * (int(y1) - y0)
 
     try:
+        # TODO: need to include the detrending in the iterative gpr fitting/filtering, first linear fit might be heavily biased?
+        # try to remove a linear fit from the data before we fit, then add it back in when we're done.
         reg = detrend(t_scale, fdata, ferr)
     except:
         y_pred = np.nan * np.zeros(t_pred.shape)
@@ -147,20 +288,74 @@ def fit_data(data, t_vals, uncert):
     # t_scale = t_scale[~isout]
     # ferr = ferr[~isout]
 
-    y_pred, sigma, z_score, good_vals = iterative_fit(t_scale, fdata, ferr, t_pred)
+    y_pred, sigma, z_score, good_vals = iterative_gpr(t_scale, fdata, ferr, t_pred, opt=opt, kernel=kernel)
     return y_pred + l_trend, sigma, z_score, good_vals
 
+def ls(subarr,t_vals,uncert,weigh,filt_ls=False,conf_filt=0.99):
 
-@jit 
-def fitall_jit(argsin): 
-    subarr, i, t_vals, uncert, new_t = argsin
+    T, Y, X = subarr.shape
+
+    z_mat = subarr.reshape(T,Y*X)
+    t_mat = np.array([t_vals,]*Y*X).T
+    if weigh:
+        w_mat = np.array([1./uncert**2,]*Y*X).T
+
+    if filt_ls:
+        if weigh:
+            yl, yu = wls_matrix(t_mat, z_mat, w_mat, conf_interv=conf_filt)[3:5]
+        else:
+            yl, yu = ols_matrix(t_mat, z_mat, conf_interv=conf_filt)[3:5]
+
+        z_mat[z_mat < yl] = np.nan
+        z_mat[z_mat > yu] = np.nan
+
+    if weigh:
+        beta1, _, incert_slope = wls_matrix(t_mat, z_mat, w_mat)[0:2]
+    else:
+        beta1, _, incert_slope = ols_matrix(t_mat, z_mat)[0:2]
+
+    date_min = np.nanmin(t_mat, axis=0)
+    date_max = np.nanmax(t_mat, axis=0)
+    nb_trend = (~np.isnan(z_mat)).sum(axis=0)
+
+    filter_less_2_DEMs = nb_trend <= 2
+    beta1[filter_less_2_DEMs] = np.nan
+    incert_slope[filter_less_2_DEMs] = np.nan
+
+    slope = np.reshape(beta1, (Y,X))
+    slope_sig = np.reshape(incert_slope, (Y,X))
+    nb_dem = np.reshape(nb_trend, (Y,X))
+    date_min = np.reshape(date_min, (Y,X))
+    date_max = np.reshape(date_max, (Y,X))
+
+    outarr = np.concatenate((slope, slope_sig, nb_dem, date_min, date_max), axis=0)
+
+    return outarr
+
+@jit
+def gpr_wrapper(argsin):
+    subarr, i, t_vals, uncert, new_t, opt, kernel, tstep = argsin
     start = time.time()
-    Y, X = subarr[0].shape 
-    outarr = np.nan * np.zeros((new_t * 2, Y, X)) 
-    for x in range(X): 
+    Y, X = subarr[0].shape
+    outarr = np.nan * np.zeros((new_t * 2, Y, X))
+    #pixel by pixel
+    for x in range(X):
         for y in range(Y):
-            out = fit_data(subarr[:, y, x], t_vals, uncert) 
+            tmp_y, tmp_sig = gpr(subarr[:, y, x], t_vals, uncert,opt=opt,kernel=kernel,tstep=tstep)[0:2]
+            out = np.concatenate((tmp_y,tmp_sig),axis=0)
             outarr[:, y, x] = out
+    elaps = time.time() - start
+    print('Done with block {}, elapsed time {}.'.format(i, elaps))
+    return outarr
+
+@jit
+def ls_wrapper(argsin):
+    subarr, i, t_vals, uncert, weigh = argsin
+    start = time.time()
+
+    #matrix
+    outarr = ls(subarr,t_vals,uncert,weigh)
+
     elaps = time.time() - start
     print('Done with block {}, elapsed time {}.'.format(i, elaps))
     return outarr
@@ -183,3 +378,230 @@ def stitcher(outputs, nblocks, overlap=0):
             outind = j + i*nblocks[1]
             stitched[i] = np.concatenate((stitched[i], outputs[outind]), axis=2)
     return np.concatenate(tuple(stitched), axis=1)
+
+
+def cube_to_stack(ds,ds_arr,y0,nice_fit_t,out_cube,fit_t,outfile,method,clobber=False):
+
+    #TODO: probably a cleaner way to write this without having to call ds + ds_arr, nice_fit_t + y0 + fit_t here to copy shapes...
+
+    if outfile is None:
+        outfile = 'fit_' + method + '.nc'
+
+    fit_cube = out_cube[:fit_t.size, :, :]
+    sig_cube = out_cube[fit_t.size:, :, :]
+
+    nco, to, xo, yo = create_nc(ds_arr[0], outfile=outfile,
+                                clobber=clobber, t0=np.datetime64('{}-01-01'.format(y0)))
+    create_crs_variable(parse_epsg(ds['crs'].spatial_ref), nco)
+
+    x, y = ds['x'].values, ds['y'].values
+    xo[:] = x
+    yo[:] = y
+    to[:] = nice_fit_t
+
+    zo = nco.createVariable('z', 'f4', ('time', 'y', 'x'), fill_value=-9999)
+    zo.units = 'meters'
+    zo.long_name = 'Fit elevation above WGS84 ellipsoid'
+    zo.grid_mapping = 'crs'
+    zo.coordinates = 'x y'
+    zo.set_auto_mask(True)
+
+    zo[:] = fit_cube
+
+    fzo = nco.createVariable('z_ci', 'f4', ('time', 'y', 'x'), fill_value=-9999)
+    fzo.units = 'meters'
+    fzo.long_name = '68% confidence interval for elevation fit.'
+    fzo.grid_mapping = 'crs'
+    fzo.coordinates = 'x y'
+    fzo.set_auto_mask(True)
+
+    fzo[:] = sig_cube
+
+    nco.close()
+
+def arr_to_img(ds,out_arr,outfile,method):
+
+    if outfile is None:
+        outfile_fit = 'fit_' + method + '_dh.tif'
+        outfile_sig = 'fit_' + method + '_err.tif'
+        outfile_nb = 'fit_' + method + '_nb.tif'
+        outfile_dmin = 'fit_' + method + '_dmin.tif'
+        outfile_dmax = 'fit_' + method + '_dmax.tif'
+    else:
+        outfile_fit = os.path.join(os.path.dirname(outfile),
+                                   os.path.splitext(os.path.basename(outfile))[0] + '_dh.tif')
+        outfile_sig = os.path.join(os.path.dirname(outfile),
+                                   os.path.splitext(os.path.basename(outfile))[0] + '_err.tif')
+        outfile_nb = os.path.join(os.path.dirname(outfile),
+                                   os.path.splitext(os.path.basename(outfile))[0] + '_nb.tif')
+        outfile_dmin = os.path.join(os.path.dirname(outfile),
+                                   os.path.splitext(os.path.basename(outfile))[0] + '_dmin.tif')
+        outfile_dmax = os.path.join(os.path.dirname(outfile),
+                                   os.path.splitext(os.path.basename(outfile))[0] + '_dmax.tif')
+
+    fit_arr = out_arr[1, :, :]
+    sig_arr = out_arr[2, :, :]
+    nb_arr = out_arr[3, :, :]
+    dmin_arr = out_arr[4, :, :]
+    dmax_arr = out_arr[5, :, :]
+
+    #TODO: I don't get how you go from stack back to GeoImg easily yet
+    #arr = geoimg(ds)
+
+    # arr.img = fit_arr
+    # arr.write(outfile_fit)
+    # arr.img = sig_arr
+    # arr.write(outfile_sig)
+    # arr.img = nb_arr
+    # arr.write(outfile_nb)
+    # arr.img = dmin_arr
+    # arr.write(outfile_dmin)
+    # arr.img = dmax_arr
+    # arr.write(outfile_dmax)
+
+
+def create_circular_mask(h, w, center=None, radius=None):
+
+    if center is None:  # use the middle of the image
+        center = [int(w / 2), int(h / 2)]
+    if radius is None:  # use the smallest distance between the center and image walls
+        radius = min(center[0], center[1], w - center[0], h - center[1])
+
+    Y, X = np.ogrid[:h, :w]
+    dist_from_center = np.sqrt((X - center[0]) ** 2 + (Y - center[1]) ** 2)
+
+    mask = dist_from_center <= radius
+    return mask
+
+
+def filter_ref(ds_arr,ref_dem,cutoff_kern_size=5000,cutoff_thr=100.):
+
+    #here we assume that the reference DEM is a "clean" post-processed DEM, filtered with QA for low confidence outliers
+
+    #minimum/maximum elevation in circular surroundings based on reference DEM
+    Y, X = ds_arr[0].shape
+    ref_arr = ref_dem.img
+    res = ref_dem.dx
+    max_arr=np.nan*np.zeros((Y,X))
+    min_arr=np.nan*np.zeros((Y,X))
+    rad = int(np.floor(cutoff_kern_size/res))
+    for x in range(X):
+        for y in range(Y):
+            max_arr[x,y]=np.nanmax(ref_arr[create_circular_mask(Y,X,center=[y,x],radius=rad)])
+            min_arr[x,y] = np.nanmin(ref_arr[create_circular_mask(Y, X, center=[y, x], radius=rad)])
+
+    for i in range(ds_arr.shape[0]):
+        ds_arr[i,np.logical_or(ds_arr[i,:]>(max_arr+cutoff_thr),ds_arr[i,:]<(min_arr-cutoff_thr))] = np.nan
+
+    #TODO: add rough kernel temporal filtering based on maximum dh in a median-filtered first linear fit?
+
+    return ds_arr
+
+def fit_stack(fn_stack,fn_ref_dem=None,inc_mask=None,nproc=1,method='gpr',opt_gpr=False,kernel=None,cutoff_trange=None,tstep=0.25,outfile=None,clobber=False):
+
+    """
+    Given a netcdf stack of DEMs, perform temporal fitting with uncertainty propagation
+
+    :param fn_stack: Filename for input netcdf file
+    :param fn_ref_dem: Filename for input reference DEM (maybe we change that to a footprint shapefile to respect your original structure?)
+    :param inc_mask: Optional inclusion mask
+    :param nproc: Number of cores for multiprocessing [1]
+    :param method: Fitting method, currently supported: Gaussian Process Regression "gpr", Ordinary Least Squares "ols" and Weighted Least Squares "wls" ["gpr"]
+    :param opt_gpr: Run learning optimization in the GPR fitting [False]
+    :param kernel: Kernel
+    :param cutoff_trange: Temporal range to fit
+    :param tstep: Temporal step for fitted stack [0.25 year]
+    :param outfile: Path to outfile
+    :param clobber: overwrite output file [False]
+    :return:
+    """
+
+    print('Reading dataset: '+fn_stack)
+
+    #TODO: taking AGES to read with the chunks sizes, what's up with that? even when writting chunked nc files in stack_tools :(
+    # we are already chunking manually (split/stitch) below so let's leave chunking aside for now
+
+    # ds = xr.open_dataset(fn_stack, chunks={'x': 100, 'y': 100})
+    ds = xr.open_dataset(fn_stack)
+    # ds.load()
+    ds_arr = ds.variables['z'].values
+
+    if inc_mask is not None:
+        land_mask = get_land_mask(inc_mask, ds)
+        ds_arr[:, ~land_mask] = np.nan
+
+    print('Filtering...')
+    keep_vals = ds['uncert'].values < 25
+    t_vals = ds['time'].values[keep_vals]
+    uncert = ds['uncert'].values[keep_vals]
+    ds_arr = ds_arr[keep_vals, :, :]
+
+    # minimum/maximum elevation on Earth
+    ds_arr[np.logical_or(ds_arr < -400, ds_arr > 8900)] = np.nan
+
+    if fn_ref_dem is not None:
+        ref_dem = GeoImg(fn_ref_dem)
+        ds_arr = filter_ref(ds_arr,ref_dem)
+
+    print('Converting time data')
+    y0 = t_vals[0].astype('datetime64[D]').astype(object).year
+    y1 = t_vals[-1].astype('datetime64[D]').astype(object).year + 1.1
+    fit_t = np.arange(y0, y1, 0.25) - y0
+    nice_fit_t = [np.timedelta64(int(d), 'D').astype(int) for d in np.round(fit_t * 365.2524)]
+
+    print('Fitting with method: '+ method)
+
+    if nproc == 1:
+        print('Processing with 1 core...')
+        if method == 'gpr':
+            out_cube = gpr_wrapper((ds_arr, 0, t_vals, uncert, fit_t.size),opt_gpr,kernel,tstep)
+            cube_to_stack(ds,ds_arr,y0,nice_fit_t,out_cube,fit_t,outfile=outfile,method=method,clobber=clobber)
+        elif method in ['ols','wls']:
+            if method == 'ols':
+                weig = False
+            else:
+                weig = True
+            out_arr = ls_wrapper((ds_arr, 0, t_vals, uncert, fit_t.size),weig)
+            arr_to_img(ds,out_arr,outfile=outfile, method=method)
+        else:
+            print('Method must be gpr, ols or wls.')
+            sys.exit()
+
+    else:
+        print('Processing with '+str(nproc)+' cores...')
+        # now, try to figure out the nicest way to break up the image, given the number of processors
+        # there has to be a better way than this... i'll look into it
+
+        # n_x_tiles = np.ceil(ds['x'].shape[0] / 10).astype(int)  # break it into 10x10 tiles
+        # n_y_tiles = np.ceil(ds['y'].shape[0] / 10).astype(int)
+        n_x_tiles = 8
+        n_y_tiles = 8
+        pool = mp.Pool(nproc, maxtasksperchild=1)
+        split_arr = splitter(ds_arr, (n_y_tiles, n_x_tiles))
+
+        if method == 'gpr':
+            argsin = [(s, i, np.copy(t_vals), np.copy(uncert), np.copy(fit_t.size), opt_gpr, kernel,tstep) for i, s in
+                      enumerate(split_arr)]
+            outputs = pool.map(gpr_wrapper, argsin, chunksize=1)
+            out_cube = stitcher(outputs, (n_y_tiles, n_x_tiles))
+            pool.close()
+            pool.join()
+
+            cube_to_stack(ds, ds_arr, y0, nice_fit_t, out_cube, fit_t, outfile=outfile, method=method, clobber=clobber)
+
+        elif method in ['ols','wls']:
+            if method == 'ols':
+                weig = False
+            else:
+                weig = True
+            argsin = [(s, i, np.copy(t_vals), np.copy(uncert), weig) for i, s in
+                      enumerate(split_arr)]
+            outputs = pool.map(ls_wrapper, argsin, chunksize=1)
+            out_arr = stitcher(outputs, (n_y_tiles, n_x_tiles))
+            pool.close()
+            pool.join()
+
+            arr_to_img(ds,out_arr,outfile=outfile, method=method)
+        else:
+            print('Method must be gpr, ols or wls.')
+            sys.exit()

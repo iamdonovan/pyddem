@@ -22,6 +22,7 @@ import matplotlib.pylab as plt
 import pandas as pd
 import scipy.optimize as optimize
 import time
+import zipfile, shutil
 from skimage.morphology import disk
 from scipy.ndimage.morphology import binary_opening, binary_dilation
 from scipy.ndimage.filters import median_filter
@@ -34,6 +35,23 @@ from pybob.GeoImg import GeoImg
 from pybob.image_tools import nanmedian_filter
 from pybob.plot_tools import plot_shaded_dem
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+
+
+def extract_file_from_zip(fn_zip_in,filename_in,fn_file_out):
+
+    with zipfile.ZipFile(fn_zip_in) as zip_file:
+
+        for member in zip_file.namelist():
+            filename = os.path.basename(member)
+            if filename != filename_in:
+                # skip directories
+                continue
+
+            # copy file (taken from zipfile's extract)
+            source = zip_file.open(member)
+            target = open(fn_file_out, "wb")
+            with source, target:
+                shutil.copyfileobj(source, target)
 
 
 def clean_coreg_dir(out_dir, cdir):
@@ -136,8 +154,13 @@ def reproject_geometry(src_data, src_crs, dst_crs):
 
     :returns dst_data: reprojected data.
     """
-    src_proj = pyproj.Proj(src_crs)
-    dst_proj = pyproj.Proj(dst_crs)
+    #unfortunately this requires pyproj>1.95, temporary fix to avoid shambling dependencies in mmaster_environment
+    # src_proj = pyproj.Proj(src_crs)
+    # dst_proj = pyproj.Proj(dst_crs)
+
+    src_proj=pyproj.Proj(init='EPSG:'+str(src_crs))
+    dst_proj=pyproj.Proj(init='EPSG:'+str(dst_crs))
+
     project = partial(pyproj.transform, src_proj, dst_proj)
     return transform(project, src_data)
 
@@ -1188,7 +1211,7 @@ def correct_along_track_bias(mst_dem, slv_dem, ang_mapN, ang_mapB, pp, pts):
 
 def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
                          pts=False, work_dir='.', out_dir='biasrem',
-                         return_geoimg=True, write_log=False):
+                         return_geoimg=True, write_log=False,zipped=False):
     """
     Removes cross track and along track biases from MMASTER DEMs.
 
@@ -1205,6 +1228,7 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
     :param out_dir: Location to save bias removal outputs. ['biasrem']
     :param return_geoimg: Return GeoImg objects of the corrected slave DEM and the co-registered master DEM [True]
     :param write_log: Re-direct stdout, stderr to a log file in the work directory [False]
+    :param zipped: extract from zip archive, keep a minimum of output files (logs and pdfs only) [False]
 
     :type mst_dem: str, pybob.GeoImg, pybob.ICESat
     :type slv_dem: str, pybob.GeoImg
@@ -1215,11 +1239,37 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
     :type out_dir: str
     :type return_geoimg: bool
     :type write_log: bool
+    :type zipped: bool
 
     :returns slv_corr, mst_coreg: corrected MMASTER DEM, co-registered master DEM (if return_geoimg)
     """
     orig_dir = os.getcwd()
     os.chdir(work_dir)
+
+    if zipped:
+        #we assume that the .zip has the same name as the L1A strip directory:
+        strip_ref = '_'.join(os.path.basename(slv_dem).split('_')[:-1])
+        #zip file
+        fn_zip = os.path.join(orig_dir,work_dir,strip_ref+'.zip')
+        #filenames to extract
+        fn_slv = strip_ref+'_Z.tif'
+        fn_corr = strip_ref+'_CORR.tif'
+        fn_along3B = 'TrackAngleMap_3B.tif'
+        fn_along3N = 'TrackAngleMap_3N.tif'
+        fn_v123 = strip_ref + '_V123.tif'
+        #TODO: do we really want to extract all V123 files here? they're quite heavy
+        #files to extract to
+        fn_slv_tif = os.path.join(orig_dir,work_dir,fn_slv)
+        fn_corr_tif = os.path.join(orig_dir,work_dir,fn_corr)
+        fn_along3B_tif = os.path.join(orig_dir,work_dir,fn_along3B)
+        fn_along3N_tif = os.path.join(orig_dir,work_dir,fn_along3N)
+        fn_v123_tif = os.path.join(orig_dir,work_dir,fn_v123)
+        #extract
+        extract_file_from_zip(fn_zip,fn_slv,fn_slv_tif)
+        extract_file_from_zip(fn_zip,fn_corr,fn_corr_tif)
+        extract_file_from_zip(fn_zip,fn_along3B,fn_along3B_tif)
+        extract_file_from_zip(fn_zip,fn_along3N,fn_along3N_tif)
+        extract_file_from_zip(fn_zip,fn_v123,fn_v123_tif)
     
     # if the output directory does not exist, create it.
     # out_dir = os.path.sep.join([work_dir, out_dir])
@@ -1351,7 +1401,8 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
     orig_slv.img = orig_slv.img + cross_correction
     
     outname = os.path.splitext(slv_dem)[0] + "_adj_X.tif"
-    orig_slv.write(outname, out_folder=out_dir)
+    if not zipped:
+        orig_slv.write(outname, out_folder=out_dir)
     np.savetxt(os.path.sep.join([out_dir, 'params_CrossTrack_Polynomial.txt']), pcoef)
     plt.close("all")
 
@@ -1362,17 +1413,20 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
     orig_slv.img = orig_slv.img + along_correction_low
     
     outname = os.path.splitext(slv_dem)[0] + "_adj_XA.tif"
-    orig_slv.write(outname, out_folder=out_dir)
+    if not zipped:
+        orig_slv.write(outname, out_folder=out_dir)
     np.savetxt(os.path.sep.join([out_dir, 'params_AlongTrack_SumofSines.txt']), scoef)
     plt.close("all")
 
     # finally, calculate and apply the full-frequency along-track correction.
     sinmod = fitfun_sumofsin_2angle(xxn_mat, xxb_mat, jcoef)
     along_correction = np.reshape(sinmod, orig_slv.img.shape)
-    orig_slv.img = orig_slv.img - along_correction_low + along_correction
+    #don't need to remove low freq correction with the new jitter approach
+    orig_slv.img = orig_slv.img + along_correction
 
     outname = os.path.splitext(slv_dem)[0] + "_adj_XAJ.tif"
-    orig_slv.write(outname, out_folder=out_dir)
+    if not zipped:
+        orig_slv.write(outname, out_folder=out_dir)
     np.savetxt(os.path.sep.join([out_dir, 'params_AlongTrack_Jitter.txt']), jcoef)
     plt.close("all")
 
@@ -1412,6 +1466,21 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
         sys.stderr = sys.__stderr__
         logfile.close()
         errfile.close()
+
+    if zipped:
+        #TODO: this could be another option "clean"... and could prevent from writing the files in the first place
+        #   along the process structure instead (still need to clean the ones from the zip though)
+        fn_filtz = os.path.join(orig_dir,work_dir,os.path.splitext(slv_dem)[0][:-2]+'_filtZ.tif')
+        fn_z_adj = os.path.join(out_dir,  os.path.splitext(slv_dem)[0][:-2] + '_Z_adj.tif')
+        fn_corr_adj = os.path.join(out_dir,  os.path.splitext(slv_dem)[0][:-2] + '_CORR_adj.tif')
+        fn_v123_adj = os.path.join(out_dir,  os.path.splitext(slv_dem)[0][:-2] + '_V123_adj.tif')
+
+        fn_rm_list = [fn_slv_tif,fn_corr_tif,fn_along3N_tif,fn_along3B_tif,fn_v123_tif,fn_filtz,fn_z_adj,fn_corr_adj,fn_v123_adj]
+
+        for fn_fil in fn_rm_list:
+            if os.path.exists(fn_fil):
+                os.remove(fn_fil)
+
 
     os.chdir(orig_dir)
     if return_geoimg:

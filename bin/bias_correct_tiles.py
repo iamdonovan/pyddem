@@ -22,6 +22,7 @@ from pymmaster.mmaster_tools import mmaster_bias_removal, get_aster_footprint
 def batch_wrapper(argsin):
     arg_dict, master_tiles, s = argsin
     arg_dict['mst_dem'] = get_tiles(arg_dict['work_dir'], master_tiles, s)
+
     return mmaster_bias_removal(**arg_dict)
 
 
@@ -85,6 +86,7 @@ def _argparser():
                         help="process assuming that master DEM is point elevations [False].")
     parser.add_argument('-l', '--log', action='store_true', default=False,
                         help="write output to a log file rather than printing to the screen [False].")
+    parser.add_argument('-z','--zip',action='store_true',default=False,help='extract from zip archive, keep a minimum of output files (logs and pdfs only) [False].')
     return parser
 
 
@@ -106,6 +108,7 @@ def main():
             print("{} cores specified to use, but I could only find \
                   {} cores on this machine, so I'll use those.'".format(args.nproc, mp.cpu_count()))
             args.nproc = mp.cpu_count
+        print('Using:' +str(args.nproc)+' processors')
         pool = mp.Pool(args.nproc, maxtasksperchild=1)
         # get a dictionary of arguments for each of the different DEMs,
         # starting with the common arguments (master dem, glacier mask, etc.)
@@ -114,7 +117,8 @@ def main():
                     'pts': args.points, 
                     'out_dir': args.outdir,
                     'return_geoimg': False,
-                    'write_log': True}
+                    'write_log': True,
+                    'zipped': args.zip}
         u_args = [{'work_dir': d,
                    'slv_dem': '{}_Z.tif'.format(d)} for i, d in enumerate(args.indir)]
         for d in u_args:
@@ -132,8 +136,10 @@ def main():
             os.chdir(indir)
             #print(os.getcwd())
             if args.slavedem is None:
-                flist = glob('AST*_Z.tif')
-                this_slavedem = flist[0]
+                if args.zip:
+                    this_slavedem = os.path.splitext(glob('AST*.zip'))[0]+'_Z.tif'
+                else:
+                    this_slavedem = glob('AST*_Z.tif')[0]
                 mmaster_bias_removal(mst_dem,
                                      this_slavedem,
                                      glacmask=args.exc_mask,
@@ -141,16 +147,18 @@ def main():
                                      out_dir=args.outdir,
                                      pts=args.points,
                                      return_geoimg=False,
-                                     write_log=args.log)
+                                     write_log=args.log,
+                                     zipped=args.zip)
             else:
                 mmaster_bias_removal(mst_dem,
                                      args.slavedem,
-                                     glaciermask=args.exc_mask,
+                                     glacmask=args.exc_mask,
                                      landmask=args.inc_mask,
                                      out_dir=args.outdir,
                                      pts=args.points,
                                      return_geoimg=False,
-                                     write_log=args.log)
+                                     write_log=args.log,
+                                     zipped=args.zip)
             os.chdir(odir)
     
     # clean up after ourselves, remove the vrts we created.
