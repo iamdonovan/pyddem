@@ -308,9 +308,9 @@ def ls(subarr, t_vals, uncert, weigh, filt_ls=False, conf_filt=0.99):
         z_mat[z_mat > yu] = np.nan
 
     if weigh:
-        beta1, _, incert_slope = wls_matrix(t_mat, z_mat, w_mat)[0:2]
+        beta1, _, incert_slope = wls_matrix(t_mat, z_mat, w_mat)[0:3]
     else:
-        beta1, _, incert_slope = ols_matrix(t_mat, z_mat)[0:2]
+        beta1, _, incert_slope = ols_matrix(t_mat, z_mat)[0:3]
 
     date_min = np.nanmin(t_mat, axis=0)
     date_max = np.nanmax(t_mat, axis=0)
