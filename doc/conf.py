@@ -51,8 +51,8 @@ def setup(app):
 # -- Project information -----------------------------------------------------
 
 project = 'pymmaster'
-copyright = '2019, Luc Girod, Robert McNabb, Chris Nuth'
-author = 'Luc Girod, Robert McNabb, Chris Nuth'
+copyright = '2019, Luc Girod, Robert McNabb, Chris Nuth, Romain Huggonet'
+author = 'Luc Girod, Robert McNabb, Chris Nuth, Romain Huggonet'
 
 # The short X.Y version
 version = ''
