@@ -95,7 +95,7 @@ def make_mask(inpoly, pts, raster_out=False):
         # now, create the raster to burn the mask to.
         masktarget = gdal.GetDriverByName('MEM').Create('', pts.npix_x, pts.npix_y, 1, gdal.GDT_Byte)
         masktarget.SetGeoTransform((pts.xmin, pts.dx, 0, pts.ymax, 0, pts.dy))
-        masktarget.SetProjection(pts.proj)
+        masktarget.SetProjection(pts.proj_wkt)
         masktarget.GetRasterBand(1).Fill(0)
         gdal.RasterizeLayer(masktarget, [1], masklayer)
         mask = masktarget.GetRasterBand(1).ReadAsArray()
