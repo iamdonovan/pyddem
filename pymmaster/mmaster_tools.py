@@ -1076,7 +1076,7 @@ def correct_along_track_bias(mst_dem, slv_dem, ang_mapN, ang_mapB, pp, pts, robu
                                              T=70,
                                              minimizer_kwargs=init_args)
         init_results = init_results.lowest_optimization_result
-        print(init_results.x)
+        # print(init_results.x)
         # use the initial estimate to start, USING two angles to get the lowest 2
         # frequencies for the sum of sines fit
 
