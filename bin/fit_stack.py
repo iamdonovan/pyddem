@@ -3,8 +3,8 @@ import argparse
 import numpy as np
 from pymmaster.fit_tools import fit_stack
 
-def main():
-    np.seterr(all='ignore')
+
+def _argparser():
     parser = argparse.ArgumentParser(description="Fit timeseries of elevation data using Gaussian Process.")
     # things to add: input directory, master dem and/or elevation data
     # optional: output directory, number of processors, land mask, glacier mask, number of jitter iterations?
@@ -20,16 +20,21 @@ def main():
                         help='File to save results to. [fitted_stack.nc]')
     parser.add_argument('-c', '--clobber', action='store_true', default=False,
                         help="Clobber existing outfile [False].")
+    return parser
+
+
+def main():
+    np.seterr(all='ignore')
+    parser = _argparser()
     args = parser.parse_args()
 
     fit_stack(args.stack,
-                               inc_mask=args.inc_mask,
-                               nproc=args.nproc,
-                               trange=args.time_range,
-                               outfile=args.outfile,
-                               clobber=args.clobber)
+              inc_mask=args.inc_mask,
+              nproc=args.nproc,
+              trange=args.time_range,
+              outfile=args.outfile,
+              clobber=args.clobber)
 
 
 if __name__ == "__main__":
-
     main()
