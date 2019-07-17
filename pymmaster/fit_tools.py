@@ -14,10 +14,13 @@ import multiprocessing as mp
 from itertools import chain
 from scipy import stats
 from scipy.interpolate import interp1d
+from scipy.ndimage import filters
+from skimage.morphology import disk
 from sklearn.linear_model import LinearRegression
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, ConstantKernel as C, RationalQuadratic as RQ, ExpSineSquared as ESS
 from numba import jit
+from llc import jit_filter_function
 from pybob.GeoImg import GeoImg
 from pybob.image_tools import create_mask_from_shapefile
 from pymmaster.stack_tools import create_crs_variable, create_nc
@@ -473,19 +476,23 @@ def create_circular_mask(h, w, center=None, radius=None):
 
 
 def filter_ref(ds_arr, ref_dem, cutoff_kern_size=5000, cutoff_thr=100.):
-    # here we assume that the reference DEM is a "clean" post-processed DEM, filtered with QA for low confidence outliers
 
+    @jit_filter_function
+    def nanmax(a)
+        return np.nanmax(a)
+
+    @jit_filter_function
+    def nanmin(a)
+        return np.nanmin(a)
+    # here we assume that the reference DEM is a "clean" post-processed DEM, filtered with QA for low confidence outliers
     # minimum/maximum elevation in circular surroundings based on reference DEM
-    Y, X = ds_arr[0].shape
+
     ref_arr = ref_dem.img
     res = ref_dem.dx
-    max_arr = np.nan * np.zeros((Y, X))
-    min_arr = np.nan * np.zeros((Y, X))
+
     rad = int(np.floor(cutoff_kern_size / res))
-    for x in range(X):
-        for y in range(Y):
-            max_arr[x, y] = np.nanmax(ref_arr[create_circular_mask(Y, X, center=[y, x], radius=rad)])
-            min_arr[x, y] = np.nanmin(ref_arr[create_circular_mask(Y, X, center=[y, x], radius=rad)])
+    max_arr = filters.generic_filter(ref_arr, nanmax, footprint=disk(rad))
+    min_arr = filters.generic_filter(ref_arr, nanmin, footprint=disk(rad))
 
     for i in range(ds_arr.shape[0]):
         ds_arr[i, np.logical_or(ds_arr[i, :] > (max_arr + cutoff_thr), ds_arr[i, :] < (min_arr - cutoff_thr))] = np.nan
