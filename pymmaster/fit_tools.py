@@ -478,11 +478,11 @@ def create_circular_mask(h, w, center=None, radius=None):
 def filter_ref(ds_arr, ref_dem, cutoff_kern_size=5000, cutoff_thr=100.):
 
     @jit_filter_function
-    def nanmax(a)
+    def nanmax(a):
         return np.nanmax(a)
 
     @jit_filter_function
-    def nanmin(a)
+    def nanmin(a):
         return np.nanmin(a)
     # here we assume that the reference DEM is a "clean" post-processed DEM, filtered with QA for low confidence outliers
     # minimum/maximum elevation in circular surroundings based on reference DEM
