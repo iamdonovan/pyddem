@@ -6,22 +6,33 @@
 #	- footprints of DEMs (can use to clip edges, for example)
 # use: bash PostProcessMicMac.sh utm_zone,
 #	where utm_zone has the form ""6 +north" for the projection used in processing.
-utm_set=0
+proj_set=0
 sub_set=0
-while getopts "z:d:h" opt; do
+while getopts "z:o:d:h" opt; do
   case $opt in
     h)
       echo "Post-process outputs from MMASTER into nice files to use."
       echo "usage: PostProcessMicMac.sh -z 'UTMZONE' -h"
-      echo "    -z UTMZONE  : UTM Zone of area of interest. Takes form 'NN +north(south)'"
-      echo "    -d SUBDIR   : Subfolder(s) where MMASTER outputs are written. If not set, looks for folders of form AST_L1A..."
-      echo "    -h          : displays this message and exits."
+      echo "    -z UTMZONE     : UTM Zone of area of interest. Takes form 'NN +north(south)'"
+      echo "    -o PolarStereo : Use polar stereo (option N for north EPSG:3411 or S for south EPSG:3412)"
+      echo "    -d SUBDIR      : Subfolder(s) where MMASTER outputs are written. If not set, looks for folders of form AST_L1A..."
+      echo "    -h             : displays this message and exits."
       echo " "
       exit 0
       ;;
     z)
-      UTM=$OPTARG
-      utm_set=1
+      proj="+proj=utm +zone=$OPTARG +datum=WGS84 +units=m +no_defs"
+      proj_set=1
+      echo "Projection set to $proj"
+      ;;
+    o)
+      if [ "$OPTARG" = N ]; then
+        proj="+proj=stere +lat_0=90 +lat_ts=70 +lon_0=-45 +k=1 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs"
+      elif [ "$OPTARG" = S ]; then
+        proj="+proj=stere +lat_0=-90 +lat_ts=-70 +lon_0=0 +k=1 +x_0=0 +y_0=0 +a=6378273 +b=6356889.449 +units=m +no_defs"
+      fi
+      proj_set=1
+      echo "Projection set to $proj"
       ;;
     d)
       subList+=("$OPTARG")
@@ -38,11 +49,9 @@ while getopts "z:d:h" opt; do
   esac
 done
 
-if [ $utm_set -eq 0 ]; then
-      echo "Error: UTM Zone has not been set."
-      echo "call RunMicMacAster.sh -h for details on usage."
-      echo " "
-      exit 1
+if [ "$proj_set" = "0" ]; then
+  echo "RunMicMacAster.sh: projection must be set using either -z or -o flags." >&2
+  exit 1
 fi
 
 if [ $sub_set -eq 0 ]; then
@@ -123,18 +132,18 @@ for dir in ${subList[@]}; do
 
 		# now, assign the CRS we got to the mask, dem, and apply.
 		echo "Georeferencing correlation mask"
-		gdal_translate -a_nodata 0 -a_srs "+proj=utm +zone=$UTM +ellps=WGS84 +datum=WGS84 +units=m +no_defs" $lastcor $dir\_CORR.tif
+		gdal_translate -a_nodata 0 -a_srs "$proj" $lastcor $dir\_CORR.tif
 		echo "Creating temporary georeferenced DEM"
-		gdal_translate -a_srs "+proj=utm +zone=$UTM +ellps=WGS84 +datum=WGS84 +units=m +no_defs" $lastimg tmp_geo.tif
+		gdal_translate -a_srs "$proj" $lastimg tmp_geo.tif
 		echo "Creating temporary georeferenced Mask"
-		gdal_translate -a_srs "+proj=utm +zone=$UTM +ellps=WGS84 +datum=WGS84 +units=m +no_defs" -a_nodata 0 $lastmsk tmp_msk.tif
+		gdal_translate -a_srs "$proj" -a_nodata 0 $lastmsk tmp_msk.tif
 		cd ../
 		if [ -d "Ortho-MEC-Malt" ]; then 
 			cd Ortho-MEC-Malt
 			echo "Creating double size correlation mask for ortho"
-			gdal_translate -tr 15 15 -a_srs "+proj=utm +zone=$UTM +ellps=WGS84 +datum=WGS84 +units=m +no_defs" -a_nodata 0 ../MEC-Malt/$lastmsk tmp_mskDouble.tif
+			gdal_translate -tr 15 15 -a_srs "$proj" -a_nodata 0 ../MEC-Malt/$lastmsk tmp_mskDouble.tif
 			echo "Creating temporary georeferenced ortho"
-			gdal_translate -tr 15 15 -a_srs "+proj=utm +zone=$UTM +ellps=WGS84 +datum=WGS84 +units=m +no_defs" Orthophotomosaic.tif tmp_V123.tif
+			gdal_translate -tr 15 15 -a_srs "$proj" Orthophotomosaic.tif tmp_V123.tif
             resize_rasters tmp_mskDouble.tif tmp_V123.tif
 			cd ../
 		fi
@@ -168,29 +177,29 @@ for dir in ${subList[@]}; do
 
         if [ -f "Correl_STD-MALT_Num_8.tif" ]; then
     		echo "Georeferencing correlation mask"
-    		gdal_translate -a_nodata 0 -a_srs "+proj=utm +zone=$1 +ellps=WGS84 +datum=WGS84 +units=m +no_defs" Correl_STD-MALT_Num_8.tif $dir\_CORR.tif        
+    		gdal_translate -a_nodata 0 -a_srs "$proj" Correl_STD-MALT_Num_8.tif $dir\_CORR.tif
         else
             echo "No file Correl_STD-MALT_Num_8.tif found in $dir. Continuing."
         fi
 
         if [ -f "Z_Num9_DeZoom1_STD-MALT.tif" ]; then
 	    	echo "Creating temporary georeferenced DEM"
-    		gdal_translate -a_srs "+proj=utm +zone=$1 +ellps=WGS84 +datum=WGS84 +units=m +no_defs" Z_Num9_DeZoom1_STD-MALT.tif tmp_geo.tif   
+    		gdal_translate -a_srs "$proj" Z_Num9_DeZoom1_STD-MALT.tif tmp_geo.tif
         else
             echo "No file Z_Num9_DeZoom1_STD-MALT.tif found in $dir. Continuing."
         fi
 
         if [ -f "AutoMask_STD-MALT_Num_8.tif" ]; then
     		echo "Creating temporary georeferenced Mask"
-    		gdal_translate -a_srs "+proj=utm +zone=$1 +ellps=WGS84 +datum=WGS84 +units=m +no_defs" -a_nodata 0 AutoMask_STD-MALT_Num_8.tif tmp_msk.tif      
+    		gdal_translate -a_srs "$proj" -a_nodata 0 AutoMask_STD-MALT_Num_8.tif tmp_msk.tif
         else
             echo "No file AutoMask_STD-MALT_Num_8.tif found in $dir. Continuing."
         fi
 
 		echo "Creating double size correlation mask for ortho"
-		gdal_translate -tr 15 15 -a_srs "+proj=utm +zone=$1 +ellps=WGS84 +datum=WGS84 +units=m +no_defs" -a_nodata 0 AutoMask_STD-MALT_Num_8.tif tmp_mskDouble.tif
+		gdal_translate -tr 15 15 -a_srs "$proj" -a_nodata 0 AutoMask_STD-MALT_Num_8.tif tmp_mskDouble.tif
 		echo "Creating temporary georeferenced ortho"
-		gdal_translate -tr 15 15 -a_srs "+proj=utm +zone=$1 +ellps=WGS84 +datum=WGS84 +units=m +no_defs" Orthophotomosaic.tif tmp_V123.tif
+		gdal_translate -tr 15 15 -a_srs "$proj" Orthophotomosaic.tif tmp_V123.tif
         resize_rasters tmp_mskDouble.tif tmp_V123.tif
 
 		echo "Applying mask to georeferenced DEM"
