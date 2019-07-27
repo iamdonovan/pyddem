@@ -40,7 +40,7 @@ while getopts "s:z:o:c:q:wnf:t:y:ai:h" opt; do
       echo "    -t RESTERR     : Run with different terrain resolution (optional; default: 30)"
       echo "    -y do_ply      : Write point cloud (DEM drapped with ortho in ply)"
       echo "    -a do_angle    : Compute track angle along orbit"
-      echo "    -i fitVersion  : Version of Cross-track FitASTER to be used (Def 1, 2 availiable)"
+      echo "    -i fitVersion  : Version of Cross-track FitASTER to be used (Def 2, 1 availiable)"
       echo "    -h             : displays this message and exits."
       echo " "
       exit 0
