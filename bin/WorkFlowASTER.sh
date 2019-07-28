@@ -59,10 +59,6 @@ while getopts "s:z:o:c:q:wnf:t:y:ai:h" opt; do
       scene_set=1
       ;;
     z)
-      UTM=$OPTARG
-      utm_set=1
-      ;;
-    z)
       proj="+proj=utm +zone=$OPTARG +datum=WGS84 +units=m +no_defs"
       proj_set=1
       echo "Projection set to $proj"
