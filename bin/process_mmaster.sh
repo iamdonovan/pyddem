@@ -1,8 +1,9 @@
 #!/bin/bash
-module purge
-module load seracmicmac 
+#module purge
+#module load bobtools
+#module load seracmicmac
 
-export PATH=/uio/kant/geo-natg-u1/robertwm/scripts/dev/MMASTER-workflows/:$PATH
+# export PATH=/uio/kant/geo-natg-u1/robertwm/scripts/dev/MMASTER-workflows/:$PATH
 ###################
 utm=$1
 tdir=$2
