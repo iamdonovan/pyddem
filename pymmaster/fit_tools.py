@@ -475,6 +475,21 @@ def create_circular_mask(h, w, center=None, radius=None):
     return mask
 
 
+def time_filter_ref(ds, t_vals, ref_dem, ref_date, thresh=50):
+    delta_t = (ref_date - t_vals).astype('timedelta64[D]').astype(float) / 365.24
+    dh = ds - ref_dem.img
+    dt_arr = np.ones(dh.shape)
+    for i, d in enumerate(delta_t):
+        dt_arr[i] = dt_arr[i] * d
+    d_data = dh / dt_arr
+    if np.array(thresh).size == 1:
+        ds[np.abs(d_data) > thresh] = np.nan
+    else:
+        ds[np.logical_and(d_data < thresh[0],
+                          d_data > thresh[1])] = np.nan
+    return ds
+
+
 def filter_ref(ds_arr, ref_dem, cutoff_kern_size=5000, cutoff_thr=100.):
 
     @jit_filter_function
@@ -502,13 +517,14 @@ def filter_ref(ds_arr, ref_dem, cutoff_kern_size=5000, cutoff_thr=100.):
     return ds_arr
 
 
-def fit_stack(fn_stack, fn_ref_dem=None, inc_mask=None, nproc=1, method='gpr', opt_gpr=False, kernel=None,
-              cutoff_trange=None, tstep=0.25, outfile=None, clobber=False):
+def fit_stack(fn_stack, fn_ref_dem=None, fn_ref_date=None, fn_ref='min_max', fn_ref_thresh=50, inc_mask=None, nproc=1, method='gpr', opt_gpr=False,
+              kernel=None, cutoff_trange=None, tstep=0.25, outfile=None, clobber=False):
     """
     Given a netcdf stack of DEMs, perform temporal fitting with uncertainty propagation
 
     :param fn_stack: Filename for input netcdf file
     :param fn_ref_dem: Filename for input reference DEM (maybe we change that to a footprint shapefile to respect your original structure?)
+    :param fn_ref_date: Date of ref_dem
     :param inc_mask: Optional inclusion mask
     :param nproc: Number of cores for multiprocessing [1]
     :param method: Fitting method, currently supported: Gaussian Process Regression "gpr", Ordinary Least Squares "ols" and Weighted Least Squares "wls" ["gpr"]
@@ -536,7 +552,7 @@ def fit_stack(fn_stack, fn_ref_dem=None, inc_mask=None, nproc=1, method='gpr', o
         ds_arr[:, ~land_mask] = np.nan
 
     print('Filtering...')
-    keep_vals = ds['uncert'].values < 25
+    keep_vals = ds['uncert'].values < 20
     t_vals = ds['time'].values[keep_vals]
     uncert = ds['uncert'].values[keep_vals]
     ds_arr = ds_arr[keep_vals, :, :]
@@ -545,8 +561,17 @@ def fit_stack(fn_stack, fn_ref_dem=None, inc_mask=None, nproc=1, method='gpr', o
     ds_arr[np.logical_or(ds_arr < -400, ds_arr > 8900)] = np.nan
 
     if fn_ref_dem is not None:
-        ref_dem = GeoImg(fn_ref_dem)
-        ds_arr = filter_ref(ds_arr, ref_dem)
+        assert fn_ref in ['min_max', 'time'], "fn_ref must be one of: min_max, time"
+        if fn_ref == 'min_max':
+            print('Filtering using min/max values in {}'.format(fn_ref_dem))
+            ref_dem = GeoImg(fn_ref_dem)
+            ds_arr = filter_ref(ds_arr, ref_dem)
+        elif fn_ref == 'time':
+            if fn_ref_date is None:
+                print('Reference DEM time stamp not specified, defaulting to 01.01.2000')
+                fn_ref_date = '2000-01-01'
+            print('Filtering using dh/dt value to reference DEM, threshold of {} m/a'.format(fn_ref_thresh))
+            ds_arr = time_filter_ref(ds_arr, t_vals, fn_ref_dem, fn_ref_date, thresh=fn_ref_thresh)
 
     print('Converting time data')
     y0 = t_vals[0].astype('datetime64[D]').astype(object).year
