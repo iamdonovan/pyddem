@@ -23,7 +23,8 @@ from numba import jit
 from llc import jit_filter_function
 from pybob.GeoImg import GeoImg
 from pybob.image_tools import create_mask_from_shapefile
-from pymmaster.stack_tools import create_crs_variable, create_nc
+# from pymmaster.stack_tools import create_crs_variable, create_nc
+import pymmaster.stack_tools as st
 from pybob.ddem_tools import nmad
 from warnings import filterwarnings
 
@@ -392,9 +393,9 @@ def cube_to_stack(ds, ds_arr, y0, nice_fit_t, out_cube, fit_t, outfile, method, 
     fit_cube = out_cube[:fit_t.size, :, :]
     sig_cube = out_cube[fit_t.size:, :, :]
 
-    nco, to, xo, yo = create_nc(ds_arr[0], outfile=outfile,
-                                clobber=clobber, t0=np.datetime64('{}-01-01'.format(y0)))
-    create_crs_variable(parse_epsg(ds['crs'].spatial_ref), nco)
+    nco, to, xo, yo = st.create_nc(ds_arr[0], outfile=outfile,
+                                   clobber=clobber, t0=np.datetime64('{}-01-01'.format(y0)))
+    st.create_crs_variable(parse_epsg(ds['crs'].spatial_ref), nco)
 
     x, y = ds['x'].values, ds['y'].values
     xo[:] = x
@@ -517,14 +518,14 @@ def filter_ref(ds_arr, ref_dem, cutoff_kern_size=5000, cutoff_thr=100.):
     return ds_arr
 
 
-def fit_stack(fn_stack, fn_ref_dem=None, fn_ref_date=None, fn_ref='min_max', fn_ref_thresh=50, inc_mask=None, nproc=1, method='gpr', opt_gpr=False,
-              kernel=None, cutoff_trange=None, tstep=0.25, outfile=None, clobber=False):
+def fit_stack(fn_stack, fn_ref_dem=None, ref_dem_date=None, filt='min_max', filter_thresh=50, inc_mask=None, nproc=1, method='gpr', opt_gpr=False,
+              kernel=None, cutoff_trange=None, tstep=0.25, outfile='fit.nc', clobber=False, return_fit=True):
     """
     Given a netcdf stack of DEMs, perform temporal fitting with uncertainty propagation
 
     :param fn_stack: Filename for input netcdf file
     :param fn_ref_dem: Filename for input reference DEM (maybe we change that to a footprint shapefile to respect your original structure?)
-    :param fn_ref_date: Date of ref_dem
+    :param ref_dem_date: Date of ref_dem
     :param inc_mask: Optional inclusion mask
     :param nproc: Number of cores for multiprocessing [1]
     :param method: Fitting method, currently supported: Gaussian Process Regression "gpr", Ordinary Least Squares "ols" and Weighted Least Squares "wls" ["gpr"]
@@ -537,6 +538,7 @@ def fit_stack(fn_stack, fn_ref_dem=None, fn_ref_date=None, fn_ref='min_max', fn_
     :return:
     """
 
+    assert method in ['gpr', 'ols', 'wls'], "Method must be one of gpr, ols or wls."
     print('Reading dataset: ' + fn_stack)
 
     # TODO: taking AGES to read with the chunks sizes, what's up with that? even when writting chunked nc files in stack_tools :(
@@ -561,17 +563,19 @@ def fit_stack(fn_stack, fn_ref_dem=None, fn_ref_date=None, fn_ref='min_max', fn_
     ds_arr[np.logical_or(ds_arr < -400, ds_arr > 8900)] = np.nan
 
     if fn_ref_dem is not None:
-        assert fn_ref in ['min_max', 'time'], "fn_ref must be one of: min_max, time"
-        if fn_ref == 'min_max':
+        assert filt in ['min_max', 'time'], "fn_ref must be one of: min_max, time"
+        tmp_geo = st.make_geoimg(ds)
+        tmp_dem = GeoImg(fn_ref_dem)
+        ref_dem = tmp_dem.reproject(tmp_geo)
+        if filter == 'min_max':
             print('Filtering using min/max values in {}'.format(fn_ref_dem))
-            ref_dem = GeoImg(fn_ref_dem)
             ds_arr = filter_ref(ds_arr, ref_dem)
-        elif fn_ref == 'time':
-            if fn_ref_date is None:
+        elif filter == 'time':
+            if ref_dem_date is None:
                 print('Reference DEM time stamp not specified, defaulting to 01.01.2000')
-                fn_ref_date = '2000-01-01'
-            print('Filtering using dh/dt value to reference DEM, threshold of {} m/a'.format(fn_ref_thresh))
-            ds_arr = time_filter_ref(ds_arr, t_vals, fn_ref_dem, fn_ref_date, thresh=fn_ref_thresh)
+                ref_dem_date = np.datetime64('2000-01-01')
+            print('Filtering using dh/dt value to reference DEM, threshold of {} m/a'.format(filter_thresh))
+            ds_arr = time_filter_ref(ds_arr, t_vals, ref_dem, ref_dem_date, thresh=filter_thresh)
 
     print('Converting time data')
     y0 = t_vals[0].astype('datetime64[D]').astype(object).year
@@ -593,10 +597,6 @@ def fit_stack(fn_stack, fn_ref_dem=None, fn_ref_date=None, fn_ref='min_max', fn_
                 weig = True
             out_arr = ls_wrapper((ds_arr, 0, t_vals, uncert, fit_t.size), weig)
             arr_to_img(ds, out_arr, outfile=outfile, method=method)
-        else:
-            print('Method must be gpr, ols or wls.')
-            sys.exit()
-
     else:
         print('Processing with ' + str(nproc) + ' cores...')
         # now, try to figure out the nicest way to break up the image, given the number of processors
@@ -632,6 +632,3 @@ def fit_stack(fn_stack, fn_ref_dem=None, fn_ref_date=None, fn_ref='min_max', fn_
             pool.join()
 
             arr_to_img(ds, out_arr, outfile=outfile, method=method)
-        else:
-            print('Method must be gpr, ols or wls.')
-            sys.exit()
