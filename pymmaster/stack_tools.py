@@ -163,7 +163,10 @@ def create_nc(img, outfile='mmaster_stack.nc', clobber=False, t0=None):
     nrows, ncols = img.shape
 
     # nc file creation fails if we don't create manually the parent directory
-    mkdir_p(os.path.dirname(outfile))
+    outdir = os.path.dirname(outfile)
+    if outdir == '':
+        outdir = '.'
+    mkdir_p(outdir)
 
     nco = netCDF4.Dataset(outfile, 'w', clobber=clobber)
     nco.createDimension('x', ncols)
