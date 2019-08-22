@@ -13,3 +13,5 @@
 
 # sphinx documentation
 doc/_build/
+
+*/__pycache__
