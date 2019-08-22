@@ -84,7 +84,6 @@ def vgm_1d(t_vals,detrend_elev,lag_cutoff,tstep=0.25):
     ind_valid = ~np.isnan(detrend_elev)
     sample = np.column_stack((t_vals[ind_valid], detrend_elev[ind_valid]))
 
-    #might need interp1d here, or sort the removing of zeros in SV
     hs = np.arange(0, lag_cutoff, tstep)
     sv = SV(sample, hs, tstep)
 
@@ -116,6 +115,8 @@ def estimate_vgm(fn_stack,sampmask,nsamp=10000,tstep=0.25,lag_cutoff=None,min_ob
     mask_subset[index_subset] = True
 
     ds_samp = ds_arr[:, mask_subset]
+
+    # read and convert time values
     t_vals = ds['time'].values
 
     y0 = t_vals[0].astype('datetime64[D]').astype(object).year
@@ -129,6 +130,7 @@ def estimate_vgm(fn_stack,sampmask,nsamp=10000,tstep=0.25,lag_cutoff=None,min_ob
 
     lags = np.arange(0, lag_cutoff, tstep) + 0.5*tstep
 
+    # get variance/lags and number of pairwise/lags for each pixel
     vdata=np.zeros((len(lags),final_nsamp))
     pdata=np.zeros((len(lags),final_nsamp))
 
@@ -139,8 +141,9 @@ def estimate_vgm(fn_stack,sampmask,nsamp=10000,tstep=0.25,lag_cutoff=None,min_ob
 
     ptot = np.nansum(pdata,axis=1)
 
+    # mean variogram accounting for the number of pairwise comparison in each pixel
     vmean = np.nansum(vdata * pdata,axis=1) / ptot
-    #this is the std in between pixels, not accounting for the number of pairwise observation for each
+    #'rough' std: between pixels, not accounting for the number of pairwise observation
     vstd = np.nanstd(vdata,axis=1)
 
     return lags, vmean, vstd
@@ -431,9 +434,8 @@ def ls(subarr, t_vals, uncert, weigh, filt_ls=False, conf_filt=0.99):
 
     return outarr
 
-
 @jit
-def gpr_wrapper(argsin):
+def gpr_filter_wrapper(argsin):
     subarr, i, t_vals, uncert, new_t, opt, kernel, tstep = argsin
     start = time.time()
     Y, X = subarr[0].shape
@@ -448,9 +450,36 @@ def gpr_wrapper(argsin):
     print('Done with block {}, elapsed time {}.'.format(i, elaps))
     return outarr
 
+@jit
+def gpr_fit_wrapper(argsin):
+    subarr, i, t_vals, uncert, new_t, opt, kernel, tstep = argsin
+    start = time.time()
+    Y, X = subarr[0].shape
+    outarr = np.nan * np.zeros((new_t * 2, Y, X))
+    # pixel by pixel
+    for x in range(X):
+        for y in range(Y):
+            tmp_y, tmp_sig = gpr(subarr[:, y, x], t_vals, uncert, opt=opt, kernel=kernel, tstep=tstep)[0:2]
+            out = np.concatenate((tmp_y, tmp_sig), axis=0)
+            outarr[:, y, x] = out
+    elaps = time.time() - start
+    print('Done with block {}, elapsed time {}.'.format(i, elaps))
+    return outarr
 
 @jit
-def ls_wrapper(argsin):
+def ls_filter_wrapper(argsin):
+    subarr, i, t_vals, uncert, weigh = argsin
+    start = time.time()
+
+    # matrix
+    outarr = ls(subarr, t_vals, uncert, weigh)
+
+    elaps = time.time() - start
+    print('Done with block {}, elapsed time {}.'.format(i, elaps))
+    return outarr
+
+@jit
+def ls_fit_wrapper(argsin):
     subarr, i, t_vals, uncert, weigh = argsin
     start = time.time()
 
@@ -560,35 +589,23 @@ def arr_to_img(ds, out_arr, outfile, method):
     # arr.write(outfile_dmax)
 
 
-def create_circular_mask(h, w, center=None, radius=None):
-    if center is None:  # use the middle of the image
-        center = [int(w / 2), int(h / 2)]
-    if radius is None:  # use the smallest distance between the center and image walls
-        radius = min(center[0], center[1], w - center[0], h - center[1])
-
-    Y, X = np.ogrid[:h, :w]
-    dist_from_center = np.sqrt((X - center[0]) ** 2 + (Y - center[1]) ** 2)
-
-    mask = dist_from_center <= radius
-    return mask
-
-
-def time_filter_ref(ds, t_vals, ref_dem, ref_date, thresh=50):
+def time_filter_ref(ds, t_vals, ref_dem, ref_date, thresh=50, base_thresh=20):
     delta_t = (ref_date - t_vals).astype('timedelta64[D]').astype(float) / 365.24
     dh = ds - ref_dem.img
     dt_arr = np.ones(dh.shape)
     for i, d in enumerate(delta_t):
         dt_arr[i] = dt_arr[i] * d
-    d_data = dh / dt_arr
     if np.array(thresh).size == 1:
-        ds[np.abs(d_data) > thresh] = np.nan
+        ds[np.abs(dh) > base_thresh + np.abs(dt_arr)*thresh] = np.nan
     else:
-        ds[np.logical_and(d_data < thresh[0],
-                          d_data > thresh[1])] = np.nan
+        #TODO: not sure about how I wrote this one... need to define the signs of thresh[0] and thresh[1]
+        ds[np.logical_and(dh > base_thresh + dt_arr*thresh[0], dh < -base_thresh + dt_arr*thresh[1])] = np.nan
+    #     ds[np.logical_and(d_data < thresh[0],
+    #                       d_data > thresh[1])] = np.nan
     return ds
 
 
-def filter_ref(ds_arr, ref_dem, cutoff_kern_size=5000, cutoff_thr=100.):
+def spat_filter_ref(ds_arr, ref_dem, cutoff_kern_size=5000, cutoff_thr=100.):
 
     @jit_filter_function
     def nanmax(a):
@@ -610,8 +627,6 @@ def filter_ref(ds_arr, ref_dem, cutoff_kern_size=5000, cutoff_thr=100.):
     for i in range(ds_arr.shape[0]):
         ds_arr[i, np.logical_or(ds_arr[i, :] > (max_arr + cutoff_thr), ds_arr[i, :] < (min_arr - cutoff_thr))] = np.nan
 
-    # TODO: add rough kernel temporal filtering based on maximum dh in a median-filtered first linear fit?
-
     return ds_arr
 
 def fit_stack(fn_stack, fn_ref_dem=None, ref_dem_date=None, filt='min_max', filter_thresh=50, inc_mask=None, nproc=1, method='gpr', opt_gpr=False,
@@ -622,6 +637,8 @@ def fit_stack(fn_stack, fn_ref_dem=None, ref_dem_date=None, filt='min_max', filt
     :param fn_stack: Filename for input netcdf file
     :param fn_ref_dem: Filename for input reference DEM (maybe we change that to a footprint shapefile to respect your original structure?)
     :param ref_dem_date: Date of ref_dem
+    :param filt: Type of filtering
+    :param filter_thresh: Maximum dh/dt from reference DEM for time filtering
     :param inc_mask: Optional inclusion mask
     :param nproc: Number of cores for multiprocessing [1]
     :param method: Fitting method, currently supported: Gaussian Process Regression "gpr", Ordinary Least Squares "ols" and Weighted Least Squares "wls" ["gpr"]
@@ -630,17 +647,15 @@ def fit_stack(fn_stack, fn_ref_dem=None, ref_dem_date=None, filt='min_max', filt
     :param cutoff_trange: Temporal range to fit
     :param tstep: Temporal step for fitted stack [0.25 year]
     :param outfile: Path to outfile
-    :param clobber: overwrite output file [False]
     :return:
     """
 
     assert method in ['gpr', 'ols', 'wls'], "Method must be one of gpr, ols or wls."
     print('Reading dataset: ' + fn_stack)
 
-    # TODO: taking AGES to read with the chunks sizes, what's up with that? even when writting chunked nc files in stack_tools :(
     # we are already chunking manually (split/stitch) below so let's leave chunking aside for now
-
     # ds = xr.open_dataset(fn_stack, chunks={'x': 100, 'y': 100})
+
     ds = xr.open_dataset(fn_stack)
     # ds.load()
     ds_arr = ds.variables['z'].values
@@ -659,21 +674,28 @@ def fit_stack(fn_stack, fn_ref_dem=None, ref_dem_date=None, filt='min_max', filt
     ds_arr[np.logical_or(ds_arr < -400, ds_arr > 8900)] = np.nan
 
     if fn_ref_dem is not None:
-        assert filt in ['min_max', 'time'], "fn_ref must be one of: min_max, time"
+        assert filt in ['min_max', 'time','both'], "fn_ref must be one of: min_max, time, both"
         tmp_geo = st.make_geoimg(ds)
         tmp_dem = GeoImg(fn_ref_dem)
         ref_dem = tmp_dem.reproject(tmp_geo)
         if filter == 'min_max':
             print('Filtering using min/max values in {}'.format(fn_ref_dem))
-            ds_arr = filter_ref(ds_arr, ref_dem)
+            ds_arr = spat_filter_ref(ds_arr, ref_dem)
         elif filter == 'time':
             if ref_dem_date is None:
                 print('Reference DEM time stamp not specified, defaulting to 01.01.2000')
                 ref_dem_date = np.datetime64('2000-01-01')
             print('Filtering using dh/dt value to reference DEM, threshold of {} m/a'.format(filter_thresh))
             ds_arr = time_filter_ref(ds_arr, t_vals, ref_dem, ref_dem_date, thresh=filter_thresh)
+        elif filter == 'both':
+            print('Filtering using min/max values in {}'.format(fn_ref_dem))
+            ds_arr = spat_filter_ref(ds_arr, ref_dem)
+            if ref_dem_date is None:
+                print('Reference DEM time stamp not specified, defaulting to 01.01.2000')
+                ref_dem_date = np.datetime64('2000-01-01')
+            print('Filtering using dh/dt value to reference DEM, threshold of {} m/a'.format(filter_thresh))
+            ds_arr = time_filter_ref(ds_arr, t_vals, ref_dem, ref_dem_date, thresh=filter_thresh)
 
-    print('Converting time data')
     y0 = t_vals[0].astype('datetime64[D]').astype(object).year
     y1 = t_vals[-1].astype('datetime64[D]').astype(object).year + 1.1
     fit_t = np.arange(y0, y1, 0.25) - y0
@@ -684,14 +706,14 @@ def fit_stack(fn_stack, fn_ref_dem=None, ref_dem_date=None, filt='min_max', filt
     if nproc == 1:
         print('Processing with 1 core...')
         if method == 'gpr':
-            out_cube = gpr_wrapper((ds_arr, 0, t_vals, uncert, fit_t.size), opt_gpr, kernel, tstep)
+            out_cube = gpr_fit_wrapper((ds_arr, 0, t_vals, uncert, fit_t.size), opt_gpr, kernel, tstep)
             cube_to_stack(ds, ds_arr, y0, nice_fit_t, out_cube, fit_t, outfile=outfile, method=method, clobber=clobber)
         elif method in ['ols', 'wls']:
             if method == 'ols':
                 weig = False
             else:
                 weig = True
-            out_arr = ls_wrapper((ds_arr, 0, t_vals, uncert, fit_t.size), weig)
+            out_arr = ls_fit_wrapper((ds_arr, 0, t_vals, uncert, fit_t.size), weig)
             arr_to_img(ds, out_arr, outfile=outfile, method=method)
     else:
         print('Processing with ' + str(nproc) + ' cores...')
@@ -708,7 +730,7 @@ def fit_stack(fn_stack, fn_ref_dem=None, ref_dem_date=None, filt='min_max', filt
         if method == 'gpr':
             argsin = [(s, i, np.copy(t_vals), np.copy(uncert), np.copy(fit_t.size), opt_gpr, kernel, tstep) for i, s in
                       enumerate(split_arr)]
-            outputs = pool.map(gpr_wrapper, argsin, chunksize=1)
+            outputs = pool.map(gpr_fit_wrapper, argsin, chunksize=1)
             out_cube = stitcher(outputs, (n_y_tiles, n_x_tiles))
             pool.close()
             pool.join()
@@ -722,7 +744,7 @@ def fit_stack(fn_stack, fn_ref_dem=None, ref_dem_date=None, filt='min_max', filt
                 weig = True
             argsin = [(s, i, np.copy(t_vals), np.copy(uncert), weig) for i, s in
                       enumerate(split_arr)]
-            outputs = pool.map(ls_wrapper, argsin, chunksize=1)
+            outputs = pool.map(ls_fit_wrapper, argsin, chunksize=1)
             out_arr = stitcher(outputs, (n_y_tiles, n_x_tiles))
             pool.close()
             pool.join()
