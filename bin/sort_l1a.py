@@ -22,6 +22,7 @@ from glob import glob
 import numpy as np
 import pandas as pd
 
+
 def extract_odl_astL1A(fn):
     f = open(fn, 'r')
     body = f.read()
@@ -29,37 +30,41 @@ def extract_odl_astL1A(fn):
     def get_odl_parenth_value(text_odl, obj_name):
         posobj = str.find(text_odl, obj_name)
         posval = str.find(text_odl[posobj + 1:len(text_odl)], 'VALUE')
-        posparenthesis = str.find(text_odl[posobj +1 +posval:len(text_odl)], '(')
-        posendval = str.find(text_odl[posobj +1+ posval + posparenthesis:len(text_odl)], ')')
+        posparenthesis = str.find(text_odl[posobj + 1 + posval:len(text_odl)], '(')
+        posendval = str.find(text_odl[posobj + 1 + posval + posparenthesis:len(text_odl)], ')')
 
-        val = text_odl[posobj+posval+posparenthesis+2:posobj+posval+posparenthesis+posendval +1]
+        val = text_odl[posobj + posval + posparenthesis + 2:posobj + posval + posparenthesis + posendval + 1]
 
         return val
 
     def get_odl_quot_value(text_odl, obj_name):
         posobj = str.find(text_odl, obj_name)
         posval = str.find(text_odl[posobj + 1:len(text_odl)], 'VALUE')
-        posquote =  str.find(text_odl[posobj + 1 + posval:len(text_odl)], '"')
+        posquote = str.find(text_odl[posobj + 1 + posval:len(text_odl)], '"')
         posendval = str.find(text_odl[posobj + posval + posquote + 2:len(text_odl)], '"')
 
-        val = text_odl[posobj + posval +posquote+ 2:posobj + posval + +posquote + posendval +2]
+        val = text_odl[posobj + posval + posquote + 2:posobj + posval + +posquote + posendval + 2]
 
         return val
 
     # get latitude
     lat_val = get_odl_parenth_value(body, 'GRingPointLatitude')
-    lat_tuple = [float(lat_val.split(',')[0]), float(lat_val.split(',')[1]), float(lat_val.split(',')[2]), float(lat_val.split(',')[3])]
+    lat_tuple = [float(lat_val.split(',')[0]), float(lat_val.split(',')[1]), float(lat_val.split(',')[2]),
+                 float(lat_val.split(',')[3])]
 
     # get longitude
     lon_val = get_odl_parenth_value(body, 'GRingPointLongitude')
-    lon_tuple = [float(lon_val.split(',')[0]), float(lon_val.split(',')[1]), float(lon_val.split(',')[2]), float(lon_val.split(',')[3])]
+    lon_tuple = [float(lon_val.split(',')[0]), float(lon_val.split(',')[1]), float(lon_val.split(',')[2]),
+                 float(lon_val.split(',')[3])]
 
     # get calendar date + time of day
     caldat_val = get_odl_quot_value(body, 'CalendarDate')
     timeday_val = get_odl_quot_value(body, 'TimeofDay')
-    caldat = datetime(year=int(caldat_val.split('-')[0]), month=int(caldat_val.split('-')[1]), day=int(caldat_val.split('-')[2]),
-                               hour=int(timeday_val.split(':')[0]), minute=int(timeday_val.split(':')[1]),
-                               second=int(timeday_val.split(':')[2][0:2]), microsecond=int(timeday_val.split(':')[2][3:6]) * 1000)
+    caldat = datetime(year=int(caldat_val.split('-')[0]), month=int(caldat_val.split('-')[1]),
+                      day=int(caldat_val.split('-')[2]),
+                      hour=int(timeday_val.split(':')[0]), minute=int(timeday_val.split(':')[1]),
+                      second=int(timeday_val.split(':')[2][0:2]),
+                      microsecond=int(timeday_val.split(':')[2][3:6]) * 1000)
 
     # get cloud cover
     cloudcov_val = get_odl_quot_value(body, 'SceneCloudCoverage')
@@ -88,36 +93,37 @@ def extract_odl_astL1A(fn):
     # get scene orientation angle
     orient_attr = get_odl_quot_value(body, 'ASTERSceneOrientationAngle')
     # orient_angl = float(orient_attr)
-    #some .met files are in fact somehow incomplete for angles... let's forget it!
+    # some .met files are in fact somehow incomplete for angles... let's forget it!
     orient_angl = float(15.)
 
     return lat_tuple, lon_tuple, caldat, cloudcov_perc, band_tags, orient_angl
 
-def latlon_to_UTM(lat,lon):
 
-    #utm module excludes regions south of 80°S and north of 84°N, unpractical for global vector manipulation
+def latlon_to_UTM(lat, lon):
+    # utm module excludes regions south of 80°S and north of 84°N, unpractical for global vector manipulation
     # utm_all = utm.from_latlon(lat,lon)
     # utm_nb=utm_all[2]
 
-    #utm zone from longitude without exclusions
-    if -180<=lon<180:
-        utm_nb=int(np.floor((lon+180)/6))+1 #lon=-180 refers to UTM zone 1 towards East (West corner convention)
+    # utm zone from longitude without exclusions
+    if -180 <= lon < 180:
+        utm_nb = int(
+            np.floor((lon + 180) / 6)) + 1  # lon=-180 refers to UTM zone 1 towards East (West corner convention)
     else:
         sys.exit('Longitude value is out of range.')
 
-    if 0<=lat<90: #lat=0 refers to North (South corner convention)
-        epsg='326'+str(utm_nb).zfill(2)
-        utm_zone=str(utm_nb).zfill(2)+'N'
-    elif -90<=lat<0:
-        epsg='327'+str(utm_nb).zfill(2)
-        utm_zone=str(utm_nb).zfill(2)+'S'
+    if 0 <= lat < 90:  # lat=0 refers to North (South corner convention)
+        epsg = '326' + str(utm_nb).zfill(2)
+        utm_zone = str(utm_nb).zfill(2) + 'N'
+    elif -90 <= lat < 0:
+        epsg = '327' + str(utm_nb).zfill(2)
+        utm_zone = str(utm_nb).zfill(2) + 'S'
     else:
         sys.exit('Latitude value is out of range.')
 
     return epsg, utm_zone
 
-def read_geom_from_shp(in_shp):
 
+def read_geom_from_shp(in_shp):
     print('Reading shapefile: ' + in_shp + '...')
 
     # get layer from ESRI shapefile
@@ -134,8 +140,8 @@ def read_geom_from_shp(in_shp):
 
     return geomcol, proj.ExportToWkt()
 
-def polygon_list_to_multipoly(list_poly):
 
+def polygon_list_to_multipoly(list_poly):
     print('Creating multipolygon from polygon list...')
 
     # create empty multipolygon
@@ -147,16 +153,16 @@ def polygon_list_to_multipoly(list_poly):
 
     return multipoly
 
-def union_cascaded_multipoly(multipoly):
 
+def union_cascaded_multipoly(multipoly):
     print('Calculating cascaded union of multipolygon...')
     # calculating cascaded union of multipolygon
     cascadedpoly = multipoly.UnionCascaded()
 
     return cascadedpoly
 
-def get_poly_centroid(poly):
 
+def get_poly_centroid(poly):
     centroid = poly.Centroid()
 
     center_lon, center_lat, _ = centroid.GetPoint()
@@ -164,9 +170,8 @@ def get_poly_centroid(poly):
     return center_lon, center_lat
 
 
-def sort_l1a_by_region(list_pulldir,list_shp,out_dir):
-
-    #first, load shapefiles of region polygons
+def sort_l1a_by_region(list_pulldir, list_shp, out_dir):
+    # first, load shapefiles of region polygons
     list_poly_shp = []
     for shp in list_shp:
         poly_shpf = read_geom_from_shp(shp)
@@ -174,15 +179,18 @@ def sort_l1a_by_region(list_pulldir,list_shp,out_dir):
 
     for pulldir in list_pulldir:
 
-        #list l1a files in temporary directory
-        list_l1af = [os.path.join(pulldir,fil) for fil in os.listdir(pulldir) if fil.endswith('.met')]
+        # list l1a files in temporary directory
+        list_l1af = [os.path.join(pulldir, fil) for fil in os.listdir(pulldir) if fil.endswith('.met')]
 
         for l1af in list_l1af:
 
-            print('Calculating intersections for granule '+str(list_l1af.index(l1af)+1)+' out of '+str(len(list_l1af))+' of archive '+os.path.basename(pulldir)+':'+os.path.basename(l1af))
-            lat_tup, lon_tup, _ , _, df, _ = extract_odl_astL1A(l1af)
+            print('Calculating intersections for granule ' + str(list_l1af.index(l1af) + 1) + ' out of ' + str(
+                len(list_l1af)) + ' of archive ' + os.path.basename(pulldir) + ':' + os.path.basename(l1af))
+            lat_tup, lon_tup, _, _, df, _ = extract_odl_astL1A(l1af)
 
-            list_coord = ([lon_tup[0],lat_tup[0]], [lon_tup[1],lat_tup[1]], [lon_tup[2],lat_tup[2]], [lon_tup[3],lat_tup[3]], [lon_tup[0],lat_tup[0]])
+            list_coord = (
+            [lon_tup[0], lat_tup[0]], [lon_tup[1], lat_tup[1]], [lon_tup[2], lat_tup[2]], [lon_tup[3], lat_tup[3]],
+            [lon_tup[0], lat_tup[0]])
 
             # creating granule polygon
             ring = ogr.Geometry(ogr.wkbLinearRing)
@@ -198,10 +206,11 @@ def sort_l1a_by_region(list_pulldir,list_shp,out_dir):
                 polyintersect = poly2.Intersection(poly_shp)  # polygon intersection
 
                 if not polyintersect.IsEmpty():
-                    rgi_reg_to_copy.append(os.path.basename(rgi_list[list_poly_shp.index(poly_shp)]).split('rgi60')[0]+'rgi60')
+                    rgi_reg_to_copy.append(
+                        os.path.basename(rgi_list[list_poly_shp.index(poly_shp)]).split('rgi60')[0] + 'rgi60')
 
             # copy or move to proper directories
-            no_inters_dir = os.path.join(out_dir,'no_inters')
+            no_inters_dir = os.path.join(out_dir, 'no_inters')
 
             if len(rgi_reg_to_copy) == 0:
 
@@ -211,64 +220,65 @@ def sort_l1a_by_region(list_pulldir,list_shp,out_dir):
                     os.mkdir(no_inters_dir)
 
                 if df.loc['band_3N'].values[0] and df.loc['band_3B'].values[0]:
-                    shutil.move(l1af,os.path.join(no_inters_dir,os.path.basename(l1af)))
-                    shutil.move(l1af[:-4],os.path.join(no_inters_dir,os.path.basename(l1af[:-4])))
+                    shutil.move(l1af, os.path.join(no_inters_dir, os.path.basename(l1af)))
+                    shutil.move(l1af[:-4], os.path.join(no_inters_dir, os.path.basename(l1af[:-4])))
 
                 else:
-                    no_stereo_dir = os.path.join(no_inters_dir,'no_stereoband')
+                    no_stereo_dir = os.path.join(no_inters_dir, 'no_stereoband')
                     if not os.path.exists(no_stereo_dir):
                         os.mkdir(no_stereo_dir)
-                    shutil.move(l1af,os.path.join(no_stereo_dir,os.path.basename(l1af)))
-                    shutil.move(l1af[:-4],os.path.join(no_stereo_dir,os.path.basename(l1af[:-4])))
+                    shutil.move(l1af, os.path.join(no_stereo_dir, os.path.basename(l1af)))
+                    shutil.move(l1af[:-4], os.path.join(no_stereo_dir, os.path.basename(l1af[:-4])))
 
             elif len(rgi_reg_to_copy) == 1:
 
                 print('Found 1 intersection.')
-                print('Moving to '+rgi_reg_to_copy[0]+'...')
+                print('Moving to ' + rgi_reg_to_copy[0] + '...')
 
-                rgi_reg_dir = os.path.join(out_dir,rgi_reg_to_copy[0],'aster_l1a')
-                if not os.path.exists(os.path.join(out_dir,rgi_reg_to_copy[0])):
-                    os.mkdir(os.path.join(out_dir,rgi_reg_to_copy[0]))
+                rgi_reg_dir = os.path.join(out_dir, rgi_reg_to_copy[0], 'aster_l1a')
+                if not os.path.exists(os.path.join(out_dir, rgi_reg_to_copy[0])):
+                    os.mkdir(os.path.join(out_dir, rgi_reg_to_copy[0]))
                 if not os.path.exists(rgi_reg_dir):
                     os.mkdir(rgi_reg_dir)
 
                 if df.loc['band_3N'].values[0] and df.loc['band_3B'].values[0]:
-                    shutil.move(l1af,os.path.join(rgi_reg_dir,os.path.basename(l1af)))
-                    shutil.move(l1af[:-4],os.path.join(rgi_reg_dir,os.path.basename(l1af[:-4])))
+                    shutil.move(l1af, os.path.join(rgi_reg_dir, os.path.basename(l1af)))
+                    shutil.move(l1af[:-4], os.path.join(rgi_reg_dir, os.path.basename(l1af[:-4])))
                 else:
-                    no_stereo_dir = os.path.join(rgi_reg_dir,'no_stereoband')
+                    no_stereo_dir = os.path.join(rgi_reg_dir, 'no_stereoband')
                     if not os.path.exists(no_stereo_dir):
                         os.mkdir(no_stereo_dir)
-                    shutil.move(l1af,os.path.join(no_stereo_dir,os.path.basename(l1af)))
-                    shutil.move(l1af[:-4],os.path.join(no_stereo_dir,os.path.basename(l1af[:-4])))
+                    shutil.move(l1af, os.path.join(no_stereo_dir, os.path.basename(l1af)))
+                    shutil.move(l1af[:-4], os.path.join(no_stereo_dir, os.path.basename(l1af[:-4])))
 
             elif len(rgi_reg_to_copy) >= 2:
 
-                print('Found '+str(len(rgi_reg_to_copy))+ ' intersections.')
+                print('Found ' + str(len(rgi_reg_to_copy)) + ' intersections.')
 
                 for rgi_reg in rgi_reg_to_copy:
-                    print('Copying to '+rgi_reg+'...')
-                    rgi_reg_dir = os.path.join(out_dir, rgi_reg,'aster_l1a')
+                    print('Copying to ' + rgi_reg + '...')
+                    rgi_reg_dir = os.path.join(out_dir, rgi_reg, 'aster_l1a')
                     if not os.path.exists(os.path.join(out_dir, rgi_reg)):
                         os.mkdir(os.path.join(out_dir, rgi_reg))
                     if not os.path.exists(rgi_reg_dir):
                         os.mkdir(rgi_reg_dir)
 
                     if df.loc['band_3N'].values[0] and df.loc['band_3B'].values[0]:
-                        shutil.copy(l1af, os.path.join(rgi_reg_dir,os.path.basename(l1af)))
-                        shutil.copy(l1af[:-4], os.path.join(rgi_reg_dir,os.path.basename(l1af[:-4])))
+                        shutil.copy(l1af, os.path.join(rgi_reg_dir, os.path.basename(l1af)))
+                        shutil.copy(l1af[:-4], os.path.join(rgi_reg_dir, os.path.basename(l1af[:-4])))
                     else:
                         no_stereo_dir = os.path.join(rgi_reg_dir, 'no_stereoband')
                         if not os.path.exists(no_stereo_dir):
                             os.mkdir(no_stereo_dir)
-                        shutil.copy(l1af, os.path.join(no_stereo_dir,os.path.basename(l1af)))
-                        shutil.copy(l1af[:-4], os.path.join(no_stereo_dir,os.path.basename(l1af[:-4])))
+                        shutil.copy(l1af, os.path.join(no_stereo_dir, os.path.basename(l1af)))
+                        shutil.copy(l1af[:-4], os.path.join(no_stereo_dir, os.path.basename(l1af[:-4])))
 
                 os.remove(l1af)
                 os.remove(l1af[:-4])
 
             else:
                 sys.exit('Problem with the intersections. Exiting...')
+
 
 def rm_duplic_l1a(dir_l1a):
     list_l1a = [os.path.join(dir_l1a, l1a) for l1a in os.listdir(dir_l1a) if l1a.endswith('.met')]
@@ -299,13 +309,12 @@ def rm_duplic_l1a(dir_l1a):
     tag_rm = 'y'
     if tag_rm == 'y':
         for l1a_dupli in list_l1a_dupli:
-            print('Removing '+l1a_dupli+'...')
+            print('Removing ' + l1a_dupli + '...')
             os.remove(l1a_dupli)
             os.remove(l1a_dupli[:-4])
 
 
-def sort_l1a_by_strip(dir_l1a,strip_length):
-
+def sort_l1a_by_strip(dir_l1a, strip_length):
     def parse_aster_filename(fname):
         return datetime.strptime(fname[11:25], '%m%d%Y%H%M%S')
 
@@ -374,23 +383,24 @@ def sort_l1a_by_strip(dir_l1a,strip_length):
     mkdir_p('sorted')
 
     for s in striplist:
-        mkdir_p(os.path.join(dir_l1a,'sorted', s[0][0:25]))
+        mkdir_p(os.path.join(dir_l1a, 'sorted', s[0][0:25]))
         if len(s) == 1:
             # shutil.move(s[0] + '.zip', 'singles')
             # shutil.move(s[0] + '.zip.met', 'singles')
-            shutil.move(s[0] + '.zip', os.path.join(dir_l1a,'sorted', s[0][0:25]))
-            shutil.move(s[0] + '.zip.met', os.path.join(dir_l1a,'sorted', s[0][0:25]))
+            shutil.move(s[0] + '.zip', os.path.join(dir_l1a, 'sorted', s[0][0:25]))
+            shutil.move(s[0] + '.zip.met', os.path.join(dir_l1a, 'sorted', s[0][0:25]))
         else:
             # mkdir_p(os.path.join('strips', s[0][0:25]))
             for ss in s:
                 # shutil.copy(ss + '.zip', os.path.join('strips', s[0][0:25]))
                 # shutil.copy(ss + '.zip.met', os.path.join('strips', s[0][0:25]))
-                shutil.copy(ss + '.zip', os.path.join(dir_l1a,'sorted', s[0][0:25]))
-                shutil.copy(ss + '.zip.met', os.path.join(dir_l1a,'sorted', s[0][0:25]))
+                shutil.copy(ss + '.zip', os.path.join(dir_l1a, 'sorted', s[0][0:25]))
+                shutil.copy(ss + '.zip.met', os.path.join(dir_l1a, 'sorted', s[0][0:25]))
                 # now, clean up the current folder.
     for f in glob('*.zip*'):
         os.remove(f)
     print('Fin.')
+
 
 def sort_strip_by_utm(dir_l1a):
     sorted_dir = os.path.join(dir_l1a, 'sorted')
@@ -436,42 +446,42 @@ def sort_strip_by_utm(dir_l1a):
 
 if __name__ == '__main__':
 
-    #list of directories directly containing l1a .zips and .met
+    # list of directories directly containing l1a .zips and .met
     # here a typical structure once mass downloaded from LPDAAC recursively with wget
     pulldir_dir = '/mnt/lidar2/RGI_paper/ww_L1A/ww_t1/e4ftl01.cr.usgs.gov/PullDir/'
     list_pulldir = [os.path.join(pulldir_dir, subdir) for subdir in os.listdir(pulldir_dir)]
 
-    #list of region shapefiles used for ordering data
+    # list of region shapefiles used for ordering data
     # here we use extended polygons derived from the RGI
     rgi_naming_txt = '/mnt/lidar2/RGI_paper/worldwide/rgi_neighb_merged_naming_convention.txt'
     text_file = open(rgi_naming_txt, 'r')
     rgi_list = text_file.readlines()
     ww_dir = '/mnt/lidar2/RGI_paper/worldwide/'
     shp_list = [os.path.join(ww_dir, rgi[:-1].split('rgi60')[0] + 'rgi60', 'cov',
-                              'L1A_glacierized_extended_' + rgi[:-1].split('rgi60')[0] + 'rgi60',
-                              'L1A_glacierized_extended_' + rgi[:-1].split('rgi60')[0] + 'rgi60.shp') for rgi in
-                 rgi_list]
+                             'L1A_glacierized_extended_' + rgi[:-1].split('rgi60')[0] + 'rgi60',
+                             'L1A_glacierized_extended_' + rgi[:-1].split('rgi60')[0] + 'rgi60.shp') for rgi in
+                rgi_list]
 
-    #parent directory where data will be sorted
+    # parent directory where data will be sorted
     main_dir = '/mnt/lidar2/RGI_paper/test/'
 
-    #maximum strip length
+    # maximum strip length
     strip_length = 3
 
-    #sort by region first, rgi regions here
-    sort_l1a_by_region(list_pulldir,shp_list,main_dir)
+    # sort by region first, rgi regions here
+    sort_l1a_by_region(list_pulldir, shp_list, main_dir)
 
-    #then loop for each region
+    # then loop for each region
     for rgi in rgi_list:
         rgi_dir = os.path.join(main_dir, rgi[:-1].split('rgi60')[0] + 'rgi60', 'aster_l1a')
         if os.path.exists(rgi_dir):
-            #remove duplicates
+            # remove duplicates
             rm_duplic_l1a(rgi_dir)
-            if os.path.exists(os.path.join(rgi_dir,'no_stereoband')):
-                rm_duplic_l1a(os.path.join(rgi_dir,'no_stereoband'))
+            if os.path.exists(os.path.join(rgi_dir, 'no_stereoband')):
+                rm_duplic_l1a(os.path.join(rgi_dir, 'no_stereoband'))
 
-            #sort by strips
-            sort_l1a_by_strip(rgi_dir,strip_length)
+            # sort by strips
+            sort_l1a_by_strip(rgi_dir, strip_length)
 
-            #sort by utm zone
+            # sort by utm zone
             sort_strip_by_utm(rgi_dir)
