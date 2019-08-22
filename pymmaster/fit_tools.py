@@ -12,6 +12,10 @@ import gdal
 import xarray as xr
 import matplotlib.pylab as plt
 import multiprocessing as mp
+import matplotlib
+import matplotlib.pyplot as plt
+from matplotlib import animation
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from itertools import chain
 from scipy import stats
 from scipy.interpolate import interp1d
@@ -24,12 +28,53 @@ from numba import jit
 from llc import jit_filter_function
 from pybob.GeoImg import GeoImg
 from pybob.image_tools import create_mask_from_shapefile
+from pybob.plot_tools import set_pretty_fonts
 # from pymmaster.stack_tools import create_crs_variable, create_nc
 import pymmaster.stack_tools as st
 from pybob.ddem_tools import nmad
 from warnings import filterwarnings
 
 filterwarnings('ignore')
+
+def make_dh_animation(ds, figsize=(8,10), t0=None, t1=None, dh_max=20, cmap='RdYlBu', xlbl='easting (km)',
+                      ylbl='northing (km)'):
+    set_pretty_fonts()
+    fig = plt.figure(figsize=figsize)
+    ax = fig.gca()
+
+    ds_sub = ds.loc[dict(time=slice(t0, t1))]
+
+    dh_ = ds_sub.variables['z'].values - ds_sub.variables['z'].values[0]
+    times = np.array([np.datetime_as_string(t.astype('datetime64[D]')) for t in ds_sub.time.values])
+    nice_ext = np.array([ds.x.values.min(), ds.x.values.max(), ds.y.values.min(), ds.y.values.max()]) / 1000
+    ims = []
+
+    im = ax.imshow(dh_[0], extent=nice_ext, vmin=-dh_max, vmax=dh_max, cmap=cmap)
+    ann = ax.annotate(times[0], xy=(0.05, 0.05), xycoords='axes fraction', fontsize=20,
+                      fontweight='bold', color='black', family='monospace')
+    ims.append([im, ann])
+
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    plt.colorbar(im, cax=cax, extend='both')
+
+    cax.set_ylabel('elevation change (m)')
+    ax.set_ylabel(ylbl)
+    ax.set_xlabel(xlbl)
+
+    for i in range(len(times[1:])):
+        im = ax.imshow(dh_[i+1], vmin=-dh_max, vmax=dh_max, cmap=cmap, extent=nice_ext)
+        ann = ax.annotate(times[i+1], xy=(0.05, 0.05), xycoords='axes fraction', fontsize=20,
+                          fontweight='bold', color='black', family='monospace')
+        ims.append([im, ann])
+
+    return fig, ims
+
+
+def write_animation(fig, ims, outfilename='output.gif', ani_writer='imagemagick', **kwargs):
+    ani = animation.ArtistAnimation(fig, ims, **kwargs)
+    ani.save(outfilename, writer=ani_writer)
+
 
 def get_stack_mask(maskshp, ds):
     npix_y, npix_x = ds['z'][0].shape
@@ -630,7 +675,7 @@ def spat_filter_ref(ds_arr, ref_dem, cutoff_kern_size=5000, cutoff_thr=100.):
     return ds_arr
 
 def fit_stack(fn_stack, fn_ref_dem=None, ref_dem_date=None, filt='min_max', filter_thresh=50, inc_mask=None, nproc=1, method='gpr', opt_gpr=False,
-              kernel=None, cutoff_trange=None, tstep=0.25, outfile='fit.nc', clobber=False, return_fit=True):
+              kernel=None, cutoff_trange=None, tstep=0.25, outfile='fit.nc', clobber=False):
     """
     Given a netcdf stack of DEMs, perform temporal fitting with uncertainty propagation
 
@@ -698,7 +743,7 @@ def fit_stack(fn_stack, fn_ref_dem=None, ref_dem_date=None, filt='min_max', filt
 
     y0 = t_vals[0].astype('datetime64[D]').astype(object).year
     y1 = t_vals[-1].astype('datetime64[D]').astype(object).year + 1.1
-    fit_t = np.arange(y0, y1, 0.25) - y0
+    fit_t = np.arange(y0, y1, tstep) - y0
     nice_fit_t = [np.timedelta64(int(d), 'D').astype(int) for d in np.round(fit_t * 365.2524)]
 
     print('Fitting with method: ' + method)
