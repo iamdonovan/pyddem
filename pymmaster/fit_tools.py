@@ -9,6 +9,7 @@ os.environ["NUMEXPR_NUM_THREADS"] = "1" # export NUMEXPR_NUM_THREADS=6
 import numpy as np
 import gdal
 import xarray as xr
+import matplotlib.pylab as plt
 import multiprocessing as mp
 from itertools import chain
 from scipy import stats
@@ -29,7 +30,7 @@ def nmad(data):
     return 1.4826 * np.nanmedian(np.abs(data - m))
 
 
-def get_land_mask(maskshp, ds):
+def get_stack_mask(maskshp, ds):
     npix_y, npix_x = ds['z'][0].shape
     dx = np.round((ds.x.max().values - ds.x.min().values) / float(npix_x))
     dy = np.round((ds.y.min().values - ds.y.max().values) / float(npix_y))
@@ -54,6 +55,111 @@ def get_land_mask(maskshp, ds):
 def parse_epsg(wkt):
     return int(''.join(filter(lambda x: x.isdigit(), wkt.split(',')[-1])))
 
+def vgm_1d(t_vals,detrend_elev,lag_cutoff,tstep=0.25):
+
+    # 1D variogram: inspired by http://connor-johnson.com/2014/03/20/simple-kriging-in-python/
+
+    def SVh(P, h, bw):
+        # empirical variogram for a single lag
+        pd = np.abs(np.subtract.outer(P[:,0], P[:,0]))
+        N = pd.shape[0]
+        Z = list()
+        for i in range(N):
+            for j in range(i + 1, N):
+                if (pd[i, j] >= h - bw) and (pd[i, j] <= h + bw):
+                    Z.append((P[i, 1] - P[j, 1]) ** 2.0)
+        if len(Z)>0:
+            return np.nansum(Z) / (2.0 * len(Z)), len(Z)
+        else:
+            return np.nan, 0
+
+    def SV(P, hs, bw):
+        # empirical variogram for a collection of lags
+        sv = list()
+        p = list()
+        for h in hs:
+            ph, svh = SVh(P, h, bw)
+            sv.append(svh)
+            p.append(ph)
+        sv = [[p[i], sv[i]] for i in range(len(hs))]
+        return np.array(sv).T
+
+    ind_valid = ~np.isnan(detrend_elev)
+    sample = np.column_stack((t_vals[ind_valid], detrend_elev[ind_valid]))
+
+    #might need interp1d here, or sort the removing of zeros in SV
+    hs = np.arange(0, lag_cutoff, tstep)
+    sv = SV(sample, hs, tstep)
+
+    return sv
+
+def estimate_vgm(fn_stack,sampmask,nsamp=10000,tstep=0.25,lag_cutoff=None,min_obs=8):
+
+    # estimate 1D variogram for multiple pixels: random sampling within mask
+
+    # load filtered stack
+    ds = xr.open_dataset(fn_stack)
+    # ds.load()
+    ds_arr = ds.variables['z'].values
+
+    # rasterize mask
+    mask = get_stack_mask(sampmask, ds)
+
+    # count number of valid temporal observation for each pixel
+    nb_arr = np.nansum(~np.isnan(ds_arr),axis=0)
+    mask = (mask & np.array(nb_arr>=min_obs))
+
+    # sample a subset
+    max_samp = np.count_nonzero(mask)
+    index = np.where(mask)
+    final_nsamp = min(max_samp,nsamp)
+    subset = np.random.choice(max_samp,final_nsamp,replace=False)
+    index_subset=(index[0][subset],index[1][subset])
+    mask_subset = np.zeros(np.shape(mask),dtype=np.bool)
+    mask_subset[index_subset] = True
+
+    ds_samp = ds_arr[:, mask_subset]
+    t_vals = ds['time'].values
+
+    y0 = t_vals[0].astype('datetime64[D]').astype(object).year
+    y1 = t_vals[-1].astype('datetime64[D]').astype(object).year + 1.1
+    total_delta = np.datetime64('{}-01-01'.format(int(y1))) - np.datetime64('{}-01-01'.format(int(y0)))
+    ftime_delta = np.array([t - np.datetime64('{}-01-01'.format(int(y0))) for t in t_vals])
+    t_scale = (ftime_delta / total_delta) * (int(y1) - y0)
+
+    if lag_cutoff is None:
+        lag_cutoff = np.max(t_scale) - np.min(t_scale)
+
+    lags = np.arange(0, lag_cutoff, tstep) + 0.5*tstep
+
+    vdata=np.zeros((len(lags),final_nsamp))
+    pdata=np.zeros((len(lags),final_nsamp))
+
+    for i in np.arange(final_nsamp):
+        sv = vgm_1d(t_scale, ds_samp[:,i].flatten(),lag_cutoff,tstep=tstep)
+        vdata[:,i]=sv[0]
+        pdata[:,i]=sv[1]
+
+    ptot = np.nansum(pdata,axis=1)
+
+    vmean = np.nansum(vdata * pdata,axis=1) / ptot
+    #this is the std in between pixels, not accounting for the number of pairwise observation for each
+    vstd = np.nanstd(vdata,axis=1)
+
+    return lags, vmean, vstd
+
+def plot_vgm(lags,vmean,vstd):
+
+    fig, ax = plt.subplots(1)
+    ax.plot(lags, vmean, lw=2, label='mean', color='blue')
+    ax.fill_between(lags, vmean + vstd, vmean - vstd, facecolor='blue', alpha=0.5)
+    ax.set_title('Variogram: ')
+    ax.set_xlabel('Lag [year]')
+    ax.set_ylabel('Semivariance [$\mu$ $\pm \sigma$]')
+    ax.legend(loc='lower left')
+    ax.grid()
+    # plt.savefig(fn_fig, dpi=600)
+    plt.show()
 
 def ols_matrix(X,Y,conf_interv=0.68,conf_slope=0.68):
 
@@ -182,14 +288,7 @@ def detrend(t_vals, data, ferr):
 
 def iterative_gpr(time_vals, data_vals, err_vals, time_pred, opt=False, kernel=None):
 
-    # TODO: we're doing this for millions (hell billions) of pixels, I think we should put aside the learning
-    #  aspect of GPR for each pixel and only use the determinist aspect focusing on pre-defined kernels (GPR without
-    #  training is equivalent to kriging). We define kernels based on prior knowledge of all the data (and not each pixel):
-    #  DEM measurement error (RMSE) + variability in the regions (modelling long range varios=kernels: seasonality + linearity)?
-    #  also probably more robust when data is scarce on some pixels...
-    #  SAVES 100x the computing time
-    #  problem is estimating the generic covariances: R is practical but Python... I'll look at the pygeostat developping lib
-    #  thus I've put as default: opt=False -> optimizer = None
+    # TODO: add option to filter data only?
     if opt:
         optimizer = 'fmin_l_bfgs_b'
         n_restarts_optimizer = 9
@@ -501,6 +600,7 @@ def filter_ref(ds_arr,ref_dem,cutoff_kern_size=5000,cutoff_thr=100.):
 
     return ds_arr
 
+#TODO: add option to do filtering only? or save after filtering, before fitting?
 def fit_stack(fn_stack,fn_ref_dem=None,inc_mask=None,nproc=1,method='gpr',opt_gpr=False,kernel=None,cutoff_trange=None,tstep=0.25,outfile=None,clobber=False):
 
     """
@@ -531,7 +631,7 @@ def fit_stack(fn_stack,fn_ref_dem=None,inc_mask=None,nproc=1,method='gpr',opt_gp
     ds_arr = ds.variables['z'].values
 
     if inc_mask is not None:
-        land_mask = get_land_mask(inc_mask, ds)
+        land_mask = get_stack_mask(inc_mask, ds)
         ds_arr[:, ~land_mask] = np.nan
 
     print('Filtering...')
