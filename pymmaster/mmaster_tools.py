@@ -1532,7 +1532,7 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
     ### re-coregister
     print('Re-co-registering DEMs.')
     recoreg_outdir = os.path.sep.join([out_dir, 're-coreg'])
-    mst_coreg, slv_adj_coreg, shift_params2 = dem_coregistration(mst_dem, slv_coreg_xcorr_acorr,
+    mst_coreg, slv_adj_coreg, shift_params2 = dem_coregistration(mst_dem, slv_coreg_xcorr_acorr_jcorr,
                                                                  glaciermask=glacmask, landmask=landmask,
                                                                  outdir=recoreg_outdir, pts=pts)
     if shift_params2 == -1:
