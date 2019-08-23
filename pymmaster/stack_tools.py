@@ -187,13 +187,12 @@ def create_nc(img, outfile='mmaster_stack.nc', clobber=False, t0=None):
     to.calendar = 'standard'
     to.standard_name = 'date'
 
-    # TODO: added chunksizes here, but it doesn't seem to change the slow reading speed in fit_tools...
-    xo = nco.createVariable('x', 'f4', ('x'), chunksizes=[10])
+    xo = nco.createVariable('x', 'f4', ('x')) #, chunksizes=[10])
     xo.units = 'm'
     xo.standard_name = 'projection_x_coordinate'
     xo.axis = 'X'
 
-    yo = nco.createVariable('y', 'f4', ('y'), chunksizes=[10])
+    yo = nco.createVariable('y', 'f4', ('y')) # chunksizes=[10])
     yo.units = 'm'
     yo.standard_name = 'projection_y_coordinate'
     yo.axis = 'Y'
@@ -244,24 +243,6 @@ def make_geoimg(ds, band=0):
     del wa, sg, sp, md
 
     return GeoImg(dst)
-
-
-def extract_dem():
-    # TODO: stack to GeoImg slice at a time t
-    # temporal interpolation choice: linear or neirest neighbour? (for raw stack or fitted stack)
-    # get interpolated error map as well if sigma exists
-    pass
-
-
-def extract_ddem():
-    # TODO: same but get dDEM slice into a GeoImg between times t0 and t1
-    pass
-
-
-def extract_pixel():
-    # TODO: extract stack for 1 pixel given either coordinates, or row/col numbers
-    pass
-
 
 def create_mmaster_stack(filelist, extent=None, res=None, epsg=None, outfile='mmaster_stack.nc',
                          clobber=False, uncert=False, coreg=False, mst_tiles=None,
