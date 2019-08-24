@@ -433,6 +433,10 @@ def old_gpr(data, t_vals, uncert, t_pred, opt=False, kernel=None, get_filt=False
 
 def gpr(data, t_vals, uncert, t_pred, opt=False, kernel=None):
 
+    # if only 0 or 1 elevation values in the pixel, no fitting
+    if np.count_nonzero(np.isfinite(data)) < 2:
+        return np.nan * np.zeros(t_pred.shape), np.nan * np.zeros(t_pred.shape), np.nan * np.zeros(data.shape)
+
     #converting time values
     y0 = t_vals[0].astype('datetime64[D]').astype(object).year
     y1 = t_vals[-1].astype('datetime64[D]').astype(object).year + 1.1
@@ -443,10 +447,6 @@ def gpr(data, t_vals, uncert, t_pred, opt=False, kernel=None):
 
     data_vals = data[np.isfinite(data)]
     err_vals = uncert[np.isfinite(data)]
-
-    # if only 0 or 1 elevation in the pixel, no fitting
-    if np.count_nonzero(np.isfinite(data)) < 2:
-        return np.nan * np.zeros(t_pred.shape), np.nan * np.zeros(t_pred.shape), np.nan * np.zeros(data.shape)
 
     # by default, no optimizer: applying GPR with defined kernels
     if opt:
@@ -476,22 +476,23 @@ def gpr(data, t_vals, uncert, t_pred, opt=False, kernel=None):
     num_finite = data_vals.size
     good_vals = np.isfinite(data_vals)
 
-    while n_out > 0 and num_finite > 2 and niter < 3:
+    while n_out > 0 and num_finite >= 2 and niter < 3:
 
         # first, remove a linear trend
-        # try:
-        #     # try to remove a linear fit from the data before we fit, then add it back in when we're done.
-        #     reg = detrend(time_vals, data_vals, err_vals)
-        # except:
-        #     return np.nan * np.zeros(t_pred.shape), np.nan * np.zeros(t_pred.shape), np.nan * np.zeros(data.shape)
-        #
-        # l_trend = reg.predict(t_pred.reshape(-1, 1)).squeeze()
-        # detr_data_vals = data_vals - l_trend
+        try:
+            # try to remove a linear fit from the data before we fit, then add it back in when we're done.
+            reg = detrend(time_vals, data_vals, err_vals)
+        except:
+            return np.nan * np.zeros(t_pred.shape), np.nan * np.zeros(t_pred.shape), np.nan * np.zeros(data.shape)
 
-        # can probably do it with wls also, as follows (without the std/nmad filtering):
-        slope, interc = ls(data_vals, time_vals, err_vals, True)[0:2]
-        l_trend = interc + slope * time_vals
+        l_trend = reg.predict(time_vals.reshape(-1, 1)).squeeze()
         detr_data_vals = data_vals - l_trend
+
+        # can probably do it with wls also, as follows (without the std/nmad filtering)
+        # TODO: need to figure out how to deal with a T*1*1 array in "ls"
+        # slope, interc = ls(data_vals, time_vals, err_vals, True)[0:2]
+        # l_trend = interc + slope * time_vals
+        # detr_data_vals = data_vals - l_trend
 
         # if we remove a linear trend, normalize_y should be false...
         gp = GaussianProcessRegressor(kernel=kernel, optimizer=optimizer, n_restarts_optimizer=n_restarts_optimizer,
@@ -515,10 +516,12 @@ def gpr(data, t_vals, uncert, t_pred, opt=False, kernel=None):
         y_pred = np.nan * np.zeros(t_pred.shape)
         sigma = np.nan * np.zeros(t_pred.shape)
 
+    l_pred = reg.predict(t_pred.reshape(-1, 1)).squeeze()
+
     filt_data = data
     filt_data[np.isfinite(data)] = data_vals
 
-    return y_pred.squeeze() + l_trend, sigma.squeeze(), filt_data, slope
+    return y_pred.squeeze() + l_pred, sigma.squeeze(), filt_data
 
 
 def ls(subarr, t_vals, uncert, weigh, filt_ls=False, conf_filt=0.99):
@@ -569,14 +572,14 @@ def gpr_wrapper(argsin):
     subarr, i, t_vals, uncert, new_t, opt, kernel = argsin
     start = time.time()
     Y, X = subarr[0].shape
-    outarr = np.nan * np.zeros((new_t * 2, Y, X))
+    outarr = np.nan * np.zeros((new_t.size * 2, Y, X))
     filt_subarr = np.nan * np.zeros(np.shape(subarr))
     # pixel by pixel
     for x in range(X):
         for y in range(Y):
             tmp_y, tmp_sig, tmp_filt = gpr(subarr[:, y, x], t_vals, uncert, new_t, opt=opt, kernel=kernel)[0:3]
             out = np.concatenate((tmp_y, tmp_sig), axis=0)
-            filt_subarr[y, x] = tmp_filt
+            filt_subarr[: , y, x] = tmp_filt
             outarr[:, y, x] = out
     elaps = time.time() - start
     print('Done with block {}, elapsed time {}.'.format(i, elaps))
@@ -803,7 +806,7 @@ def fit_stack(fn_stack, fn_ref_dem=None, ref_dem_date=None, filt_ref='min_max', 
     if nproc == 1:
         print('Processing with 1 core...')
         if method == 'gpr':
-            out_cube, filt_cube = gpr_wrapper((ds_arr, 0, t_vals, uncert, fit_t.size), opt_gpr, kernel)
+            out_cube, filt_cube = gpr_wrapper((ds_arr, 0, t_vals, uncert, fit_t, opt_gpr, kernel))
             cube_to_stack(ds, out_cube, y0, nice_fit_t, outfile=outfile, clobber=clobber)
             if write_filt:
                 cube_to_stack(ds, filt_cube, y0, t_vals, outfile=fn_filt, clobber=clobber)
@@ -812,7 +815,7 @@ def fit_stack(fn_stack, fn_ref_dem=None, ref_dem_date=None, filt_ref='min_max', 
                 weig = False
             else:
                 weig = True
-            out_arr, filt_cube = ls_wrapper((ds_arr, 0, t_vals, uncert, fit_t.size), weig, filt_ls, conf_filt_ls)
+            out_arr, filt_cube = ls_wrapper((ds_arr, 0, t_vals, uncert, fit_t, weig, filt_ls, conf_filt_ls))
             arr_to_img(ds, out_arr, outfile=outfile)
             if write_filt:
                 cube_to_stack(ds, filt_cube, y0, t_vals, outfile=fn_filt, clobber=clobber)
@@ -821,24 +824,26 @@ def fit_stack(fn_stack, fn_ref_dem=None, ref_dem_date=None, filt_ref='min_max', 
         # now, try to figure out the nicest way to break up the image, given the number of processors
         # there has to be a better way than this... i'll look into it
 
-        # n_x_tiles = np.ceil(ds['x'].shape[0] / 10).astype(int)  # break it into 10x10 tiles
-        # n_y_tiles = np.ceil(ds['y'].shape[0] / 10).astype(int)
-        n_x_tiles = 8
-        n_y_tiles = 8
+        n_x_tiles = np.ceil(ds['x'].shape[0] / 100).astype(int)  # break it into 10x10 tiles
+        n_y_tiles = np.ceil(ds['y'].shape[0] / 100).astype(int)
+        # n_x_tiles = 8
+        # n_y_tiles = 8
         pool = mp.Pool(nproc, maxtasksperchild=1)
         split_arr = splitter(ds_arr, (n_y_tiles, n_x_tiles))
 
         if method == 'gpr':
-            argsin = [(s, i, np.copy(t_vals), np.copy(uncert), np.copy(fit_t.size), opt_gpr, kernel) for i, s in
+            argsin = [(s, i, np.copy(t_vals), np.copy(uncert), np.copy(fit_t), opt_gpr, kernel) for i, s in
                       enumerate(split_arr)]
             outputs = pool.map(gpr_wrapper, argsin, chunksize=1)
             pool.close()
             pool.join()
 
-            out_cube = stitcher(outputs[0], (n_y_tiles, n_x_tiles))
+            zip_out = list(zip(*outputs))
+
+            out_cube = stitcher(zip_out[0], (n_y_tiles, n_x_tiles))
             cube_to_stack(ds, out_cube, y0, nice_fit_t, outfile=outfile, clobber=clobber)
             if write_filt:
-                filt_cube = stitcher(outputs[1], (n_y_tiles, n_x_tiles))
+                filt_cube = stitcher(zip_out[1], (n_y_tiles, n_x_tiles))
                 cube_to_stack(ds, filt_cube, y0, t_vals, outfile=fn_filt, clobber=clobber)
 
         elif method in ['ols', 'wls']:
@@ -852,8 +857,10 @@ def fit_stack(fn_stack, fn_ref_dem=None, ref_dem_date=None, filt_ref='min_max', 
             pool.close()
             pool.join()
 
-            out_arr = stitcher(outputs[0], (n_y_tiles, n_x_tiles))
+            zip_out = list(zip(*outputs))
+
+            out_arr = stitcher(zip_out[0], (n_y_tiles, n_x_tiles))
             arr_to_img(ds, out_arr, outfile=outfile)
             if write_filt:
-                filt_cube = stitcher(outputs[1], (n_y_tiles, n_x_tiles))
+                filt_cube = stitcher(zip_out[1], (n_y_tiles, n_x_tiles))
                 cube_to_stack(ds, filt_cube, y0, t_vals, outfile=fn_filt, clobber=clobber)
