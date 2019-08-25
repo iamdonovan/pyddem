@@ -333,105 +333,7 @@ def detrend(t_vals, data, ferr):
 
     return reg
 
-
-def iterative_gpr(time_vals, data_vals, err_vals, time_pred, opt=False, kernel=None):
-    if opt:
-        optimizer = 'fmin_l_bfgs_b'
-        n_restarts_optimizer = 9
-    else:
-        optimizer = None
-        n_restarts_optimizer = 0
-
-    if kernel is None:
-        k1 = C(2.0, (1e-2, 1e2)) * RBF(10, (5, 30))  # other kernels to try to add here?
-        k2 = C(1.0, (1e-2, 1e2)) * RBF(1, (1, 5))
-        k3 = C(10, (1e-3, 1e3)) * RQ(length_scale=30, length_scale_bounds=(30, 1e3))
-        kernel = k1 + k2 + k3
-
-        # if we do without training, we don't care about bounds, simplifies the expressions:
-        # short seasonality departure with a periodic kernel of 1 year
-        # k1 = C(5) * ESS(1,1)
-
-        # long departure from linearity with a RQK
-        # k2 = RQ(30)
-        # kernel = k1 + k2
-
-    # initializing
-    n_out = 1
-    niter = 0
-
-    num_finite = data_vals.size
-    good_vals = np.isfinite(data_vals)
-
-    while n_out > 0 and num_finite > 2 and niter < 3:
-        # if we remove a linear trend, normalize_y should be false...
-        gp = GaussianProcessRegressor(kernel=kernel, optimizer=optimizer, n_restarts_optimizer=n_restarts_optimizer,
-                                      alpha=err_vals[good_vals], normalize_y=False)
-        gp.fit(time_vals[good_vals].reshape(-1, 1), data_vals[good_vals].reshape(-1, 1))
-        y_pred, sigma = gp.predict(time_pred.reshape(-1, 1), return_std=True)
-        y_, s_ = interp_data(time_pred, y_pred.squeeze(), sigma.squeeze(), time_vals)
-        z_score = np.abs(data_vals - y_) / s_
-        isin = z_score < 4
-        n_out = np.count_nonzero(~isin)
-
-        data_vals[~isin] = np.nan
-        time_vals[~isin] = np.nan
-        err_vals[~isin] = np.nan
-
-        good_vals = np.isfinite(data_vals)
-        num_finite = np.count_nonzero(good_vals)
-        niter += 1
-
-    if num_finite <= 2:
-        y_pred = np.nan * np.zeros(time_pred.shape)
-        sigma = np.nan * np.zeros(time_pred.shape)
-        z_score = np.nan * np.zeros(data_vals.shape)
-
-    return y_pred.squeeze(), sigma.squeeze(), z_score, good_vals, data_vals
-
-
-def old_gpr(data, t_vals, uncert, t_pred, opt=False, kernel=None, get_filt=False):
-    y0 = t_vals[0].astype('datetime64[D]').astype(object).year
-    y1 = t_vals[-1].astype('datetime64[D]').astype(object).year + 1.1
-
-    # changed to be consistent with new return (not concatenated)
-    if np.count_nonzero(np.isfinite(data)) < 2:
-        np.nan * np.zeros(t_pred.size), np.nan * np.zeros(t_pred.size), np.nan * np.zeros(data.shape)
-
-    ftime = t_vals[np.isfinite(data)]
-    fdata = data[np.isfinite(data)]
-    ferr = uncert[np.isfinite(data)]
-    total_delta = np.datetime64('{}-01-01'.format(int(y1))) - np.datetime64('{}-01-01'.format(int(y0)))
-
-    ftime_delta = np.array([t - np.datetime64('{}-01-01'.format(int(y0))) for t in ftime])
-    t_scale = (ftime_delta / total_delta) * (int(y1) - y0)
-
-    try:
-        # try to remove a linear fit from the data before we fit, then add it back in when we're done.
-        reg = detrend(t_scale, fdata, ferr)
-    except:
-        return np.nan * np.zeros(t_pred.size), np.nan * np.zeros(t_pred.size), np.nan * np.zeros(data.shape)
-
-    fdata = fdata - reg.predict(t_scale.reshape(-1, 1)).squeeze()
-    l_trend = reg.predict(t_pred.reshape(-1, 1)).squeeze()
-
-    # std_nmad_rat = np.std(fdata) / nmad(fdata)
-    # if std_nmad_rat > 20:
-    #    isout = np.abs(fdata) > 10 * nmad(fdata) 
-    # else:
-    #    isout = np.abs(fdata) > 4 * np.std(fdata) 
-
-    # fdata = fdata[~isout]
-    # t_scale = t_scale[~isout]
-    # ferr = ferr[~isout]
-
-    y_pred, sigma, z_score, good_vals, data_vals = iterative_gpr(t_scale, fdata, ferr, t_pred, opt=opt, kernel=kernel)
-
-    filt_data = data
-    filt_data[good_vals] = data_vals
-    return y_pred + l_trend, sigma, filt_data
-
-def gpr(data, t_vals, uncert, t_pred, opt=False, kernel=None):
+def gpr(data, t_vals, uncert, t_pred, opt=False, kernel=None, one_detrend=True):
 
     # if only 0 or 1 elevation values in the pixel, no fitting
     if np.count_nonzero(np.isfinite(data)) < 2:
@@ -472,6 +374,7 @@ def gpr(data, t_vals, uncert, t_pred, opt=False, kernel=None):
     # initializing
     n_out = 1
     niter = 0
+    tag_detr = 1
 
     num_finite = data_vals.size
     good_vals = np.isfinite(data_vals)
@@ -479,13 +382,17 @@ def gpr(data, t_vals, uncert, t_pred, opt=False, kernel=None):
     while n_out > 0 and num_finite >= 2 and niter < 3:
 
         # first, remove a linear trend
-        try:
-            # try to remove a linear fit from the data before we fit, then add it back in when we're done.
-            reg = detrend(time_vals, data_vals, err_vals)
-        except:
-            return np.nan * np.zeros(t_pred.shape), np.nan * np.zeros(t_pred.shape), np.nan * np.zeros(data.shape)
+        if tag_detr != 0:
+            try:
+                # try to remove a linear fit from the data before we fit, then add it back in when we're done.
+                reg = detrend(time_vals, data_vals, err_vals)
+            except:
+                return np.nan * np.zeros(t_pred.shape), np.nan * np.zeros(t_pred.shape), np.nan * np.zeros(data.shape)
 
-        l_trend = reg.predict(time_vals.reshape(-1, 1)).squeeze()
+            l_trend = reg.predict(time_vals.reshape(-1, 1)).squeeze()
+            if one_detrend:
+                tag_detr = 0
+
         detr_data_vals = data_vals - l_trend
 
         # can probably do it with wls also, as follows (without the std/nmad filtering)
