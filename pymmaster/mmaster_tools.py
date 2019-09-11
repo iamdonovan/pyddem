@@ -1302,7 +1302,7 @@ def correct_along_track_bias(mst_dem, slv_dem, ang_mapN, ang_mapB, pp, pts, robu
 
 
 def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
-                         pts=False, work_dir='.', out_dir='biasrem',
+                         pts=False, work_dir='.', tmp_dir=None, out_dir=None,
                          return_geoimg=True, write_log=False, zipped=False, robust=True):
     """
     Removes cross track and along track biases from MMASTER DEMs.
@@ -1317,7 +1317,8 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
         as opposed to raster data. Slope/aspect are then calculated from slaveDEM.
         masterDEM should be a string representing an HDF5 file continaing ICESat data.
     :param work_dir: Location where output files and directory should be saved [.]
-    :param out_dir: Location to save bias removal outputs. ['biasrem']
+    :param tmp_dir: Location where files are processed
+    :param out_dir: Location to save bias removal outputs.
     :param return_geoimg: Return GeoImg objects of the corrected slave DEM and the co-registered master DEM [True]
     :param write_log: Re-direct stdout, stderr to a log file in the work directory [False]
     :param zipped: extract from zip archive, keep a minimum of output files (logs and pdfs only) [False]
@@ -1339,13 +1340,27 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
     :returns slv_corr, mst_coreg: corrected MMASTER DEM, co-registered master DEM (if return_geoimg)
     """
     orig_dir = os.getcwd()
+    if tmp_dir is not None:
+        if os.path.exists(os.path.join(tmp_dir,work_dir)):
+            shutil.rmtree(os.path.join(tmp_dir,work_dir))
+        shutil.copytree(os.path.join(orig_dir,work_dir),os.path.join(tmp_dir,work_dir))
+        proc_dir=tmp_dir
+    else:
+        proc_dir=orig_dir
+
+    if out_dir is None:
+        out_dir = os.path.join(orig_dir,'biasrem')
+    else:
+        out_dir = os.path.join(out_dir,work_dir)
+
+    os.chdir(proc_dir)
     os.chdir(work_dir)
 
     if zipped:
         # we assume that the .zip has the same name as the L1A strip directory:
         strip_ref = '_'.join(os.path.basename(slv_dem).split('_')[:-1])
         # zip file
-        fn_zip = os.path.join(orig_dir, work_dir, strip_ref + '.zip')
+        fn_zip = os.path.join(proc_dir, work_dir, strip_ref + '.zip')
         # filenames to extract
         fn_slv = strip_ref + '_Z.tif'
         fn_corr = strip_ref + '_CORR.tif'
@@ -1354,17 +1369,25 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
         fn_v123 = strip_ref + '_V123.tif'
         # TODO: do we really want to extract all V123 files here? they're quite heavy
         # files to extract to
-        fn_slv_tif = os.path.join(orig_dir, work_dir, fn_slv)
-        fn_corr_tif = os.path.join(orig_dir, work_dir, fn_corr)
-        fn_along3B_tif = os.path.join(orig_dir, work_dir, fn_along3B)
-        fn_along3N_tif = os.path.join(orig_dir, work_dir, fn_along3N)
-        fn_v123_tif = os.path.join(orig_dir, work_dir, fn_v123)
+        fn_slv_tif = os.path.join(proc_dir,work_dir, fn_slv)
+        fn_corr_tif = os.path.join(proc_dir,work_dir, fn_corr)
+        fn_along3B_tif = os.path.join(proc_dir,work_dir, fn_along3B)
+        fn_along3N_tif = os.path.join(proc_dir,work_dir, fn_along3N)
+        fn_v123_tif = os.path.join(proc_dir,work_dir, fn_v123)
         # extract
         extract_file_from_zip(fn_zip, fn_slv, fn_slv_tif)
         extract_file_from_zip(fn_zip, fn_corr, fn_corr_tif)
         extract_file_from_zip(fn_zip, fn_along3B, fn_along3B_tif)
         extract_file_from_zip(fn_zip, fn_along3N, fn_along3N_tif)
         extract_file_from_zip(fn_zip, fn_v123, fn_v123_tif)
+
+        fn_filtz = os.path.join(proc_dir, work_dir, os.path.splitext(slv_dem)[0][:-2] + '_filtZ.tif')
+        fn_z_adj = os.path.join(out_dir, os.path.splitext(slv_dem)[0][:-2] + '_Z_adj.tif')
+        fn_corr_adj = os.path.join(out_dir, os.path.splitext(slv_dem)[0][:-2] + '_CORR_adj.tif')
+        fn_v123_adj = os.path.join(out_dir, os.path.splitext(slv_dem)[0][:-2] + '_V123_adj.tif')
+
+        fn_rm_list = [fn_slv_tif, fn_corr_tif, fn_along3N_tif, fn_along3B_tif, fn_v123_tif, fn_filtz, fn_z_adj,
+                      fn_corr_adj, fn_v123_adj]
 
     # if the output directory does not exist, create it.
     # out_dir = os.path.sep.join([work_dir, out_dir])
@@ -1401,6 +1424,12 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
             sys.stderr = sys.__stderr__
             logfile.close()
             errfile.close()
+        if zipped:
+            for fn_fil in fn_rm_list:
+                if os.path.exists(fn_fil):
+                    os.remove(fn_fil)
+        if tmp_dir is not None:
+            shutil.rmtree(os.path.join(tmp_dir, work_dir))
         os.chdir(orig_dir)
         if return_geoimg:
             return slv_coreg, mst_coreg
@@ -1543,6 +1572,12 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
             sys.stderr = sys.__stderr__
             logfile.close()
             errfile.close()
+        if zipped:
+            for fn_fil in fn_rm_list:
+                if os.path.exists(fn_fil):
+                    os.remove(fn_fil)
+        if tmp_dir is not None:
+            shutil.rmtree(os.path.join(tmp_dir, work_dir))
         os.chdir(orig_dir)
         if return_geoimg:
             return slv_coreg, mst_coreg
@@ -1565,19 +1600,12 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
         errfile.close()
 
     if zipped:
-        # TODO: this could be another option "clean"... and could prevent from writing the files in the first place
-        #   along the process structure instead (still need to clean the ones from the zip though)
-        fn_filtz = os.path.join(orig_dir, work_dir, os.path.splitext(slv_dem)[0][:-2] + '_filtZ.tif')
-        fn_z_adj = os.path.join(out_dir, os.path.splitext(slv_dem)[0][:-2] + '_Z_adj.tif')
-        fn_corr_adj = os.path.join(out_dir, os.path.splitext(slv_dem)[0][:-2] + '_CORR_adj.tif')
-        fn_v123_adj = os.path.join(out_dir, os.path.splitext(slv_dem)[0][:-2] + '_V123_adj.tif')
-
-        fn_rm_list = [fn_slv_tif, fn_corr_tif, fn_along3N_tif, fn_along3B_tif, fn_v123_tif, fn_filtz, fn_z_adj,
-                      fn_corr_adj, fn_v123_adj]
-
         for fn_fil in fn_rm_list:
             if os.path.exists(fn_fil):
                 os.remove(fn_fil)
+
+    if tmp_dir is not None:
+        shutil.rmtree(os.path.join(tmp_dir,work_dir))
 
     os.chdir(orig_dir)
     if return_geoimg:
