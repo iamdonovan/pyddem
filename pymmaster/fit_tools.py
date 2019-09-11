@@ -333,7 +333,7 @@ def detrend(t_vals, data, ferr):
 
     return reg
 
-def gpr(data, t_vals, uncert, t_pred, opt=False, kernel=None, one_detrend=True):
+def gpr(data, t_vals, uncert, t_pred, opt=False, kernel=None, one_detrend=False):
 
     # if only 0 or 1 elevation values in the pixel, no fitting
     if np.count_nonzero(np.isfinite(data)) < 2:
@@ -432,10 +432,18 @@ def gpr(data, t_vals, uncert, t_pred, opt=False, kernel=None, one_detrend=True):
 
 
 def ls(subarr, t_vals, uncert, weigh, filt_ls=False, conf_filt=0.99):
+
     T, Y, X = subarr.shape
 
+    #converting time values
+    y0 = t_vals[0].astype('datetime64[D]').astype(object).year
+    y1 = t_vals[-1].astype('datetime64[D]').astype(object).year + 1.1
+    total_delta = np.datetime64('{}-01-01'.format(int(y1))) - np.datetime64('{}-01-01'.format(int(y0)))
+    ftime_delta = np.array([t - np.datetime64('{}-01-01'.format(int(y0))) for t in t_vals])
+    time_vals = y0 + (ftime_delta / total_delta) * (int(y1) - y0)
+
     z_mat = subarr.reshape(T, Y * X)
-    t_mat = np.array([t_vals, ] * Y * X).T
+    t_mat = np.array([time_vals, ] * Y * X).T
     if weigh:
         w_mat = np.array([1. / uncert ** 2, ] * Y * X).T
 
@@ -470,7 +478,7 @@ def ls(subarr, t_vals, uncert, weigh, filt_ls=False, conf_filt=0.99):
 
     filt_subarr = z_mat.reshape(T, Y, X)
 
-    outarr = np.concatenate((slope, interc, slope_sig, nb_dem, date_min, date_max), axis=0)
+    outarr = np.stack((slope, interc, slope_sig, nb_dem, date_min, date_max),axis=0)
 
     return outarr, filt_subarr
 
@@ -503,14 +511,14 @@ def ls_wrapper(argsin):
     return outarr, filt_subarr
 
 
-def splitter(img, nblocks, overlap=0):
+def splitter(img, nblocks):
     split1 = np.array_split(img, nblocks[0], axis=1)
     split2 = [np.array_split(im, nblocks[1], axis=2) for im in split1]
     olist = [np.copy(a) for a in list(chain.from_iterable(split2))]
     return olist
 
 
-def stitcher(outputs, nblocks, overlap=0):
+def stitcher(outputs, nblocks):
     stitched = []
     if np.array(nblocks).size == 1:
         nblocks = np.array([nblocks, nblocks])
@@ -521,11 +529,40 @@ def stitcher(outputs, nblocks, overlap=0):
             stitched[i] = np.concatenate((stitched[i], outputs[outind]), axis=2)
     return np.concatenate(tuple(stitched), axis=1)
 
+def patchify(arr,nblocks,overlap):
 
-def cube_to_stack(ds, out_cube, y0, nice_fit_t, outfile, clobber=False):
+    overlap = int(np.floor(overlap))
+    patches = []
+    nx, ny = np.shape(arr)
+    nx_sub = nx // nblocks[0]
+    ny_sub = ny // nblocks[1]
+    split = [[nx_sub*i,min(nx_sub*(i+1),nx),ny_sub*j,min(ny_sub*(j+1),ny)] for i in range(nblocks[0]+1) for j in range(nblocks[1]+1)]
+    over = [[max(0,l[0]-overlap),min(nx,l[1]+overlap),max(0,l[2]-overlap),min(l[3]+overlap,ny)] for l in split]
+    inv = []
+    for k in range(len(split)):
+
+        x0, x1, y0, y1 = split[k]
+        i0, i1, j0, j1 = over[k]
+        patches.append(arr[i0:i1,j0:j1])
+        inv.append([x0-i0,x1-i0,y0-j0,y1-j0])
+
+    return patches, inv, split
+
+def unpatchify(arr_shape, subarr, inv, split):
+
+    out = np.zeros(arr_shape)
+
+    for k, arr in enumerate(subarr):
+
+        s = split[k]
+        i = inv[k]
+        out[s[0]:s[1],s[2]:s[3]] = arr[i[0]:i[1],i[2]:i[3]]
+
+    return out
+
+def cube_to_stack(ds, out_cube, y0, nice_fit_t, outfile, ci=True, clobber=False):
 
     fit_cube = out_cube[:len(nice_fit_t), :, :]
-    sig_cube = out_cube[len(nice_fit_t):, :, :]
 
     img_shape=np.zeros(np.shape(fit_cube)[1:3])
 
@@ -547,21 +584,25 @@ def cube_to_stack(ds, out_cube, y0, nice_fit_t, outfile, clobber=False):
 
     zo[:] = fit_cube
 
-    fzo = nco.createVariable('z_ci', 'f4', ('time', 'y', 'x'), fill_value=-9999)
-    fzo.units = 'meters'
-    fzo.long_name = '68% confidence interval for elevation fit.'
-    fzo.grid_mapping = 'crs'
-    fzo.coordinates = 'x y'
-    fzo.set_auto_mask(True)
+    if ci:
+        sig_cube = out_cube[len(nice_fit_t):, :, :]
+        fzo = nco.createVariable('z_ci', 'f4', ('time', 'y', 'x'), fill_value=-9999)
+        fzo.units = 'meters'
+        fzo.long_name = '68% confidence interval for elevation fit.'
+        fzo.grid_mapping = 'crs'
+        fzo.coordinates = 'x y'
+        fzo.set_auto_mask(True)
 
-    fzo[:] = sig_cube
+        fzo[:] = sig_cube
 
     nco.close()
 
 
 def arr_to_img(ds, out_arr, outfile):
-    outfile_fit = os.path.join(os.path.dirname(outfile),
+    outfile_slope = os.path.join(os.path.dirname(outfile),
                                os.path.splitext(os.path.basename(outfile))[0] + '_dh.tif')
+    outfile_interc = os.path.join(os.path.dirname(outfile),
+                                 os.path.splitext(os.path.basename(outfile))[0] + '_interc.tif')
     outfile_sig = os.path.join(os.path.dirname(outfile),
                                os.path.splitext(os.path.basename(outfile))[0] + '_err.tif')
     outfile_nb = os.path.join(os.path.dirname(outfile),
@@ -571,21 +612,18 @@ def arr_to_img(ds, out_arr, outfile):
     outfile_dmax = os.path.join(os.path.dirname(outfile),
                                 os.path.splitext(os.path.basename(outfile))[0] + '_dmax.tif')
 
-    fit_arr = out_arr[1, :, :]
-    sig_arr = out_arr[3, :, :]
-    nb_arr = out_arr[4, :, :]
-    dmin_arr = out_arr[5, :, :]
-    dmax_arr = out_arr[6, :, :]
     arr = st.make_geoimg(ds,band=0)
-    arr.img = fit_arr
-    arr.write(outfile_fit)
-    arr.img = sig_arr
+    arr.img = out_arr[0, :, :]
+    arr.write(outfile_slope)
+    arr.img = out_arr[1, :, :]
+    arr.write(outfile_interc)
+    arr.img = out_arr[2, :, :]
     arr.write(outfile_sig)
-    arr.img = nb_arr
+    arr.img = out_arr[3, :, :]
     arr.write(outfile_nb)
-    arr.img = dmin_arr
+    arr.img = out_arr[4, :, :]
     arr.write(outfile_dmin)
-    arr.img = dmax_arr
+    arr.img = out_arr[5, :, :]
     arr.write(outfile_dmax)
 
 
@@ -605,32 +643,58 @@ def time_filter_ref(ds, t_vals, ref_dem, ref_date, thresh=50, base_thresh=20):
     #                       d_data > thresh[1])] = np.nan
     return ds
 
+@jit_filter_function
+def nanmax(a):
+    return np.nanmax(a)
 
-def spat_filter_ref(ds_arr, ref_dem, cutoff_kern_size=5000, cutoff_thr=100.):
+@jit_filter_function
+def nanmin(a):
+    return np.nanmin(a)
 
-    @jit_filter_function
-    def nanmax(a):
-        return np.nanmax(a)
+def maxmin_disk_filter(argsin):
 
-    @jit_filter_function
-    def nanmin(a):
-        return np.nanmin(a)
+    arr, rad = argsin
+
+    max_arr = filters.generic_filter(arr, nanmax, footprint=disk(rad))
+    min_arr = filters.generic_filter(arr, nanmin, footprint=disk(rad))
+
+    return max_arr, min_arr
+
+def spat_filter_ref(ds_arr, ref_dem, cutoff_kern_size=500, cutoff_thr=20.,nproc=1):
+
     # here we assume that the reference DEM is a "clean" post-processed DEM, filtered with QA for low confidence outliers
     # minimum/maximum elevation in circular surroundings based on reference DEM
 
     ref_arr = ref_dem.img
     res = ref_dem.dx
-
     rad = int(np.floor(cutoff_kern_size / res))
-    max_arr = filters.generic_filter(ref_arr, nanmax, footprint=disk(rad))
-    min_arr = filters.generic_filter(ref_arr, nanmin, footprint=disk(rad))
+
+    if nproc == 1:
+        print('Filtering with 1 proc...')
+        max_arr, min_arr = maxmin_disk_filter((ref_arr, rad))
+    else:
+        print('Filtering with '+str(nproc)+' procs...')
+        nopt=int(np.ceil(np.sqrt(nproc)))
+        nblocks=[nopt,nopt]
+        patches, inv, split = patchify(ref_arr,nblocks,rad)
+
+        pool = mp.Pool(nproc, maxtasksperchild=1)
+        argsin = [(p, rad) for i, p in enumerate(patches)]
+        outputs = pool.map(maxmin_disk_filter, argsin, chunksize=1)
+        pool.close()
+        pool.join()
+
+        zip_out = list(zip(*outputs))
+
+        max_arr = unpatchify(np.shape(ref_arr),zip_out[0],inv,split)
+        min_arr = unpatchify(np.shape(ref_arr),zip_out[1],inv,split)
 
     for i in range(ds_arr.shape[0]):
         ds_arr[i, np.logical_or(ds_arr[i, :] > (max_arr + cutoff_thr), ds_arr[i, :] < (min_arr - cutoff_thr))] = np.nan
 
     return ds_arr
 
-def fit_stack(fn_stack, fn_ref_dem=None, ref_dem_date=None, filt_ref='min_max', time_filt_thresh=50, inc_mask=None, nproc=1, method='gpr', opt_gpr=False,
+def fit_stack(fn_stack, fn_ref_dem=None, ref_dem_date=None, filt_ref='min_max', time_filt_thresh=10, inc_mask=None, nproc=1, method='gpr', opt_gpr=False,
               kernel=None, filt_ls=False, conf_filt_ls=0.99, tstep=0.25, outfile='fit.nc', write_filt=False, clobber=False):
     """
     Given a netcdf stack of DEMs, perform temporal fitting with uncertainty propagation
@@ -683,8 +747,8 @@ def fit_stack(fn_stack, fn_ref_dem=None, ref_dem_date=None, filt_ref='min_max', 
         tmp_dem = GeoImg(fn_ref_dem)
         ref_dem = tmp_dem.reproject(tmp_geo)
         if filt_ref == 'min_max':
-            print('Filtering using min/max values in {}'.format(fn_ref_dem))
-            ds_arr = spat_filter_ref(ds_arr, ref_dem)
+            print('Filtering with using min/max values in {}'.format(fn_ref_dem))
+            ds_arr = spat_filter_ref(ds_arr, ref_dem, nproc=nproc)
         elif filt_ref == 'time':
             if ref_dem_date is None:
                 print('Reference DEM time stamp not specified, defaulting to 01.01.2000')
@@ -693,12 +757,15 @@ def fit_stack(fn_stack, fn_ref_dem=None, ref_dem_date=None, filt_ref='min_max', 
             ds_arr = time_filter_ref(ds_arr, t_vals, ref_dem, ref_dem_date, thresh=time_filt_thresh)
         elif filt_ref == 'both':
             print('Filtering using min/max values in {}'.format(fn_ref_dem))
-            ds_arr = spat_filter_ref(ds_arr, ref_dem)
+            ds_arr = spat_filter_ref(ds_arr, ref_dem, cutoff_kern_size=200, cutoff_thr=200., nproc=nproc)
+            ds_arr = spat_filter_ref(ds_arr, ref_dem, cutoff_kern_size=500, cutoff_thr=20., nproc=nproc)
+            ds_arr = spat_filter_ref(ds_arr, ref_dem, cutoff_kern_size=2000, cutoff_thr=0, nproc=int(np.floor(nproc/4)))
             if ref_dem_date is None:
                 print('Reference DEM time stamp not specified, defaulting to 01.01.2000')
                 ref_dem_date = np.datetime64('2000-01-01')
             print('Filtering using dh/dt value to reference DEM, threshold of {} m/a'.format(time_filt_thresh))
             ds_arr = time_filter_ref(ds_arr, t_vals, ref_dem, ref_dem_date, thresh=time_filt_thresh)
+
 
     # define temporal prediction vector
     y0 = t_vals[0].astype('datetime64[D]').astype(object).year
@@ -722,7 +789,7 @@ def fit_stack(fn_stack, fn_ref_dem=None, ref_dem_date=None, filt_ref='min_max', 
                 weig = False
             else:
                 weig = True
-            out_arr, filt_cube = ls_wrapper((ds_arr, 0, t_vals, uncert, fit_t, weig, filt_ls, conf_filt_ls))
+            out_arr, filt_cube = ls_wrapper((ds_arr, 0, t_vals, uncert, weig, filt_ls, conf_filt_ls))
             arr_to_img(ds, out_arr, outfile=outfile)
             if write_filt:
                 cube_to_stack(ds, filt_cube, y0, t_vals, outfile=fn_filt, clobber=clobber)
@@ -731,10 +798,10 @@ def fit_stack(fn_stack, fn_ref_dem=None, ref_dem_date=None, filt_ref='min_max', 
         # now, try to figure out the nicest way to break up the image, given the number of processors
         # there has to be a better way than this... i'll look into it
 
-        n_x_tiles = np.ceil(ds['x'].shape[0] / 100).astype(int)  # break it into 10x10 tiles
-        n_y_tiles = np.ceil(ds['y'].shape[0] / 100).astype(int)
-        # n_x_tiles = 8
-        # n_y_tiles = 8
+        # n_x_tiles = np.ceil(ds['x'].shape[0] / 100).astype(int)  # break it into 10x10 tiles
+        # n_y_tiles = np.ceil(ds['y'].shape[0] / 100).astype(int)
+        n_x_tiles = 8
+        n_y_tiles = 8
         pool = mp.Pool(nproc, maxtasksperchild=1)
         split_arr = splitter(ds_arr, (n_y_tiles, n_x_tiles))
 
