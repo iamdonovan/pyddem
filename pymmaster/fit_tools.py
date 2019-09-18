@@ -201,7 +201,7 @@ def estimate_vgm(fn_stack,shp_mask=None,rast_mask=None,nsamp=10000,tstep=0.25,la
 
     # load filtered stack
     print('Loading stack '+fn_stack)
-    ds = xr.open_dataset(fn_stack,decode_times=False)
+    ds = xr.open_dataset(fn_stack)
 
     # ds.load()
     ds_arr = ds.variables['z'].values
@@ -234,14 +234,12 @@ def estimate_vgm(fn_stack,shp_mask=None,rast_mask=None,nsamp=10000,tstep=0.25,la
 
     # read and convert time values
     t_vals = ds['time'].values
-    t_vals = t_vals * (2019 - 2000) / (np.max(t_vals) - np.min(t_vals))
-    t_scale = t_vals - t_vals[0]
 
-    # y0 = t_vals[0].astype('datetime64[D]').astype(object).year
-    # y1 = t_vals[-1].astype('datetime64[D]').astype(object).year + 1.1
-    # total_delta = np.datetime64('{}-01-01'.format(int(y1))) - np.datetime64('{}-01-01'.format(int(y0)))
-    # ftime_delta = np.array([t - np.datetime64('{}-01-01'.format(int(y0))) for t in t_vals])
-    # t_scale = (ftime_delta / total_delta) * (int(y1) - y0)
+    y0 = t_vals[0].astype('datetime64[D]').astype(object).year
+    y1 = t_vals[-1].astype('datetime64[D]').astype(object).year + 1.1
+    total_delta = np.datetime64('{}-01-01'.format(int(y1))) - np.datetime64('{}-01-01'.format(int(y0)))
+    ftime_delta = np.array([t - np.datetime64('{}-01-01'.format(int(y0))) for t in t_vals])
+    t_scale = (ftime_delta / total_delta) * (int(y1) - y0)
 
     if lag_cutoff is None:
         lag_cutoff = np.max(t_scale) - np.min(t_scale)
@@ -960,7 +958,7 @@ def fit_stack(fn_stack, subspat=None, fn_ref_dem=None, ref_dem_date=None, filt_r
             cube_to_stack(ds, out_cube, y0, nice_fit_t, outfile=outfile, clobber=clobber)
             if write_filt:
                 filt_cube = stitcher(zip_out[1], (n_y_tiles, n_x_tiles))
-                cube_to_stack(ds, filt_cube, y0, t_vals, outfile=fn_filt, clobber=clobber)
+                cube_to_stack(ds, filt_cube, y0, nice_fit_t, outfile=fn_filt, clobber=clobber)
 
         elif method in ['ols', 'wls']:
             if method == 'ols':
@@ -979,4 +977,4 @@ def fit_stack(fn_stack, subspat=None, fn_ref_dem=None, ref_dem_date=None, filt_r
             arr_to_img(ds, out_arr, outfile=outfile)
             if write_filt:
                 filt_cube = stitcher(zip_out[1], (n_y_tiles, n_x_tiles))
-                cube_to_stack(ds, filt_cube, y0, t_vals, outfile=fn_filt, clobber=clobber)
+                cube_to_stack(ds, filt_cube, y0, nice_fit_t, outfile=fn_filt, clobber=clobber)
