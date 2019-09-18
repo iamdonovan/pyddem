@@ -9,6 +9,7 @@ os.environ["VECLIB_MAXIMUM_THREADS"] = "1"  # export VECLIB_MAXIMUM_THREADS=4
 os.environ["NUMEXPR_NUM_THREADS"] = "1"  # export NUMEXPR_NUM_THREADS=6
 import numpy as np
 import gdal
+import pandas as pd
 import xarray as xr
 import matplotlib.pylab as plt
 import multiprocessing as mp
@@ -21,12 +22,14 @@ from scipy import stats
 from scipy.interpolate import interp1d
 from scipy.ndimage import filters
 from skimage.morphology import disk
+from sklearn.metrics.pairwise import linear_kernel
 from sklearn.linear_model import LinearRegression
 from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import RBF, ConstantKernel as C, RationalQuadratic as RQ, ExpSineSquared as ESS
+from sklearn.gaussian_process.kernels import RBF, ConstantKernel as C, RationalQuadratic as RQ, ExpSineSquared as ESS, PairwiseKernel
 from numba import jit
 from llc import jit_filter_function
 from pybob.GeoImg import GeoImg
+from pybob.coreg_tools import get_slope
 from pybob.image_tools import create_mask_from_shapefile
 from pybob.plot_tools import set_pretty_fonts
 # from pymmaster.stack_tools import create_crs_variable, create_nc
@@ -36,15 +39,32 @@ from warnings import filterwarnings
 
 filterwarnings('ignore')
 
-def make_dh_animation(ds, figsize=(8,10), t0=None, t1=None, dh_max=20, cmap='RdYlBu', xlbl='easting (km)',
+def make_dh_animation(ds, month_a_year=None, figsize=(8,10), t0=None, t1=None, dh_max=20, var='z', cmap='RdYlBu', xlbl='easting (km)',
                       ylbl='northing (km)'):
     set_pretty_fonts()
     fig = plt.figure(figsize=figsize)
     ax = fig.gca()
 
-    ds_sub = ds.loc[dict(time=slice(t0, t1))]
+    ds_sub = ds.sel(time=slice(t0, t1))
 
-    dh_ = ds_sub.variables['z'].values - ds_sub.variables['z'].values[0]
+    if month_a_year is not None:
+        t_vals = ds_sub.time.values
+        y0 = t_vals[0].astype('datetime64[D]').astype(object).year
+        y1 = t_vals[-1].astype('datetime64[D]').astype(object).year
+
+        t_vec=[]
+        for y in np.arange(y0,y1,1):
+            t=np.datetime64(str(y)+'-'+str(month_a_year).zfill(2)+'-01')
+            td=np.array([(t-t_vals[i].astype('datetime64[D]')).astype(int) for i in range(len(t_vals))])
+
+            closer_dat = t_vals[(np.abs(td) == np.min(np.abs(td)))][0]
+            t_vec.append(closer_dat)
+
+
+        ds_sub = ds.sel(time=t_vec)
+        # mid = int(np.floor(len(ds_sub.time.values)/2))
+
+    dh_ = ds_sub.variables[var].values - ds_sub.variables[var].values[0]
     times = np.array([np.datetime_as_string(t.astype('datetime64[D]')) for t in ds_sub.time.values])
     nice_ext = np.array([ds.x.values.min(), ds.x.values.max(), ds.y.values.min(), ds.y.values.max()]) / 1000
     ims = []
@@ -97,8 +117,9 @@ def get_stack_mask(maskshp, ds):
     mask = create_mask_from_shapefile(img, maskshp)
     return mask
 
-def vgm_1d(t_vals,detrend_elev,lag_cutoff,tstep=0.25):
+def vgm_1d(argsin):
 
+    t_vals, detrend_elev, lag_cutoff, tstep = argsin
     # 1D variogram: inspired by http://connor-johnson.com/2014/03/20/simple-kriging-in-python/
 
     def SVh(P, h, bw):
@@ -134,22 +155,71 @@ def vgm_1d(t_vals,detrend_elev,lag_cutoff,tstep=0.25):
 
     return sv
 
-def estimate_vgm(fn_stack,sampmask,nsamp=10000,tstep=0.25,lag_cutoff=None,min_obs=8):
+def wrapper_vgm1d(argsin):
+
+    t_vals, stack_detrend_elev, k, lag_cutoff, tstep = argsin
+
+    _ , nb_iter = np.shape(stack_detrend_elev)
+
+    print('Pack of '+str(nb_iter)+' variograms number '+str(k))
+
+    lags = np.arange(0,lag_cutoff,tstep)
+
+    vdata = np.zeros((len(lags), nb_iter))
+    pdata = np.zeros((len(lags), nb_iter))
+    for i in np.arange(nb_iter):
+        sv = vgm_1d((t_vals,stack_detrend_elev[:,i],lag_cutoff,tstep))
+        vdata[:, i] = sv[0]
+        pdata[:, i] = sv[1]
+
+    return vdata, pdata
+
+def draw_vgm_by_dh(fn_dh,bin_dh,fn_stack,shp_mask,outfile):
+
+    dh = GeoImg(fn_dh).img
+
+    df_all = pd.DataFrame()
+    for i in range(len(bin_dh)-1):
+
+        print('Bin of dh from '+str(bin_dh[i])+' to '+str(bin_dh[i+1]))
+
+        add_mask = np.logical_and(np.abs(dh) >= bin_dh[i],np.abs(dh)<bin_dh[i+1])
+        lags, vmean, vstd = estimate_vgm(fn_stack,shp_mask=shp_mask,rast_mask=add_mask,nproc=64,nsamp=10000)
+        id = str(bin_dh[i]) + '-' + str(bin_dh[i+1])
+
+        df = pd.DataFrame()
+        df = df.assign(lags=lags, vmean=vmean, vstd=vstd)
+        df = df.assign(id=[id]*len(df.index))
+        df_all = df_all.append(df,ignore_index=True)
+
+    df_all.to_csv(outfile)
+
+
+def estimate_vgm(fn_stack,shp_mask=None,rast_mask=None,nsamp=10000,tstep=0.25,lag_cutoff=None,min_obs=8,nproc=1,pack_size=50):
 
     # estimate 1D variogram for multiple pixels: random sampling within mask
 
     # load filtered stack
-    ds = xr.open_dataset(fn_stack)
+    print('Loading stack '+fn_stack)
+    ds = xr.open_dataset(fn_stack,decode_times=False)
+
     # ds.load()
     ds_arr = ds.variables['z'].values
 
     # rasterize mask
-    mask = get_stack_mask(sampmask, ds)
+    mask = np.ones(np.shape(ds_arr[0]),dtype=bool)
+
+    if shp_mask is not None:
+        mask = np.logical_and(get_stack_mask(shp_mask, ds),mask)
+
+    if rast_mask is not None:
+        mask = np.logical_and(rast_mask,mask)
 
     # count number of valid temporal observation for each pixel
     nb_arr = np.nansum(~np.isnan(ds_arr),axis=0)
-    mask = (mask & np.array(nb_arr>=min_obs))
+    mask = np.logical_and(mask,nb_arr>=min_obs)
 
+    print('Selecting a subsample of '+str(nsamp)+' points with at least '+str(min_obs)+ ' observations in time...')
     # sample a subset
     max_samp = np.count_nonzero(mask)
     index = np.where(mask)
@@ -160,15 +230,18 @@ def estimate_vgm(fn_stack,sampmask,nsamp=10000,tstep=0.25,lag_cutoff=None,min_ob
     mask_subset[index_subset] = True
 
     ds_samp = ds_arr[:, mask_subset]
+    # ds_samp = ds.isel(y=index[0][subset],x=index[1][subset])['z'].values
 
     # read and convert time values
     t_vals = ds['time'].values
+    t_vals = t_vals * (2019 - 2000) / (np.max(t_vals) - np.min(t_vals))
+    t_scale = t_vals - t_vals[0]
 
-    y0 = t_vals[0].astype('datetime64[D]').astype(object).year
-    y1 = t_vals[-1].astype('datetime64[D]').astype(object).year + 1.1
-    total_delta = np.datetime64('{}-01-01'.format(int(y1))) - np.datetime64('{}-01-01'.format(int(y0)))
-    ftime_delta = np.array([t - np.datetime64('{}-01-01'.format(int(y0))) for t in t_vals])
-    t_scale = (ftime_delta / total_delta) * (int(y1) - y0)
+    # y0 = t_vals[0].astype('datetime64[D]').astype(object).year
+    # y1 = t_vals[-1].astype('datetime64[D]').astype(object).year + 1.1
+    # total_delta = np.datetime64('{}-01-01'.format(int(y1))) - np.datetime64('{}-01-01'.format(int(y0)))
+    # ftime_delta = np.array([t - np.datetime64('{}-01-01'.format(int(y0))) for t in t_vals])
+    # t_scale = (ftime_delta / total_delta) * (int(y1) - y0)
 
     if lag_cutoff is None:
         lag_cutoff = np.max(t_scale) - np.min(t_scale)
@@ -176,16 +249,30 @@ def estimate_vgm(fn_stack,sampmask,nsamp=10000,tstep=0.25,lag_cutoff=None,min_ob
     lags = np.arange(0, lag_cutoff, tstep) + 0.5*tstep
 
     # get variance/lags and number of pairwise/lags for each pixel
-    vdata=np.zeros((len(lags),final_nsamp))
-    pdata=np.zeros((len(lags),final_nsamp))
 
-    for i in np.arange(final_nsamp):
-        sv = vgm_1d(t_scale, ds_samp[:,i].flatten(),lag_cutoff,tstep=tstep)
-        vdata[:,i]=sv[0]
-        pdata[:,i]=sv[1]
+    vdata = np.zeros((len(lags), final_nsamp))
+    pdata = np.zeros((len(lags), final_nsamp))
+    if nproc==1:
+        print('Drawing variograms with 1 core...')
+        for i in np.arange(final_nsamp):
+            sv = vgm_1d((t_scale, ds_samp[:,i].flatten(),lag_cutoff,tstep))
+            vdata[:,i]=sv[0]
+            pdata[:,i]=sv[1]
+    else:
+        print('Drawing variograms with '+str(nproc)+ ' cores...')
+        pool = mp.Pool(nproc, maxtasksperchild=1)
+        argsin = [(t_scale,ds_samp[:,i:min(i+pack_size,final_nsamp)],k,lag_cutoff,tstep) for k ,i in enumerate(np.arange(0,final_nsamp,pack_size))]
+        outputs = pool.map(wrapper_vgm1d, argsin, chunksize=1)
+        pool.close()
+        pool.join()
+
+        zip_out = list(zip(*outputs))
+
+        for k, i in enumerate(np.arange(0,final_nsamp,pack_size)):
+            vdata[:, i:min(i+pack_size,final_nsamp)]=zip_out[0][k]
+            pdata[:, i:min(i+pack_size,final_nsamp)]=zip_out[1][k]
 
     ptot = np.nansum(pdata,axis=1)
-
     # mean variogram accounting for the number of pairwise comparison in each pixel
     vmean = np.nansum(vdata * pdata,axis=1) / ptot
     #'rough' std: between pixels, not accounting for the number of pairwise observation
@@ -333,7 +420,8 @@ def detrend(t_vals, data, ferr):
 
     return reg
 
-def gpr(data, t_vals, uncert, t_pred, opt=False, kernel=None, one_detrend=False):
+
+def gpr(data, t_vals, uncert, t_pred, opt=False, kernel=None, not_stable=True, detrend_ls=False, loop_detrend=False):
 
     # if only 0 or 1 elevation values in the pixel, no fitting
     if np.count_nonzero(np.isfinite(data)) < 2:
@@ -348,7 +436,7 @@ def gpr(data, t_vals, uncert, t_pred, opt=False, kernel=None, one_detrend=False)
     time_vals = (ftime_delta / total_delta) * (int(y1) - y0)
 
     data_vals = data[np.isfinite(data)]
-    err_vals = uncert[np.isfinite(data)]
+    err_vals = uncert[np.isfinite(data)]**2
 
     # by default, no optimizer: applying GPR with defined kernels
     if opt:
@@ -360,16 +448,19 @@ def gpr(data, t_vals, uncert, t_pred, opt=False, kernel=None, one_detrend=False)
 
     # default kernels
     if kernel is None:
-        k1 = C(2.0, (1e-2, 1e2)) * RBF(10, (5, 30))  # other kernels to try to add here?
-        k2 = C(1.0, (1e-2, 1e2)) * RBF(1, (1, 5))
-        k3 = C(10, (1e-3, 1e3)) * RQ(length_scale=30, length_scale_bounds=(30, 1e3))
-        kernel = k1 + k2 + k3
-
-        # short seasonality departure with a periodic kernel of 1 year
-        # k1 = C(5) * ESS(1,1)
-        # long departure from linearity with a RQK
-        # k2 = RQ(30)
+        # k1 = C(200) * RBF(10)  # other kernels to try to add here?
+        # k2 = C(50) * RBF(1)
+        # # k3 = C(10, (1e-3, 1e3)) * RQ(length_scale=30, length_scale_bounds=(30, 1e3))
         # kernel = k1 + k2
+
+        # linear kernel + periodic kernel + 3/ non-linearity??
+        k1 = C(10) * PairwiseKernel(10, metric='linear')  # linear kernel
+        k2 = C(10000) * ESS(length_scale=5, periodicity=1)  # periodic kernel
+        kernel = k1 + k2
+        if not_stable:
+            # k3 =  #non-linear kernel
+            kernel= kernel + C(10) * RBF(1)
+
 
     # initializing
     n_out = 1
@@ -378,22 +469,26 @@ def gpr(data, t_vals, uncert, t_pred, opt=False, kernel=None, one_detrend=False)
 
     num_finite = data_vals.size
     good_vals = np.isfinite(data_vals)
+    max_z_score = [20,15,10,8,6,4]
 
-    while n_out > 0 and num_finite >= 2 and niter < 3:
+    while n_out > 0 and num_finite >= 2 and niter < len(max_z_score):
 
-        # first, remove a linear trend
-        if tag_detr != 0:
-            try:
-                # try to remove a linear fit from the data before we fit, then add it back in when we're done.
-                reg = detrend(time_vals, data_vals, err_vals)
-            except:
-                return np.nan * np.zeros(t_pred.shape), np.nan * np.zeros(t_pred.shape), np.nan * np.zeros(data.shape)
+        if detrend_ls:
+            # first, remove a linear trend
+            if tag_detr != 0:
+                try:
+                    # try to remove a linear fit from the data before we fit, then add it back in when we're done.
+                    reg = detrend(time_vals[good_vals], data_vals[good_vals], err_vals[good_vals])
+                except:
+                    return np.nan * np.zeros(t_pred.shape), np.nan * np.zeros(t_pred.shape), np.nan * np.zeros(data.shape)
 
-            l_trend = reg.predict(time_vals.reshape(-1, 1)).squeeze()
-            if one_detrend:
-                tag_detr = 0
+                l_trend = reg.predict(time_vals.reshape(-1, 1)).squeeze()
+                if not loop_detrend:
+                    tag_detr = 0
 
-        detr_data_vals = data_vals - l_trend
+            detr_data_vals = data_vals - l_trend
+        else:
+            detr_data_vals = data_vals
 
         # can probably do it with wls also, as follows (without the std/nmad filtering)
         # TODO: need to figure out how to deal with a T*1*1 array in "ls"
@@ -408,12 +503,15 @@ def gpr(data, t_vals, uncert, t_pred, opt=False, kernel=None, one_detrend=False)
         y_pred, sigma = gp.predict(t_pred.reshape(-1, 1), return_std=True)
         y_, s_ = interp_data(t_pred, y_pred.squeeze(), sigma.squeeze(), time_vals)
         z_score = np.abs(detr_data_vals - y_) / s_
+
         isin = z_score < 4
+        #we continue the loop if there is a least one value outside 4 stds
         n_out = np.count_nonzero(~isin)
 
-        data_vals[~isin] = np.nan
-        time_vals[~isin] = np.nan
-        err_vals[~isin] = np.nan
+        # good elevation values can also be outside 4stds because of bias in the first fits
+        # thus, if needed, we remove outliers packet by packet, starting with the largest ones
+        isout = z_score > max_z_score[niter]
+        data_vals[isout] = np.nan
 
         good_vals = np.isfinite(data_vals)
         num_finite = np.count_nonzero(good_vals)
@@ -423,12 +521,16 @@ def gpr(data, t_vals, uncert, t_pred, opt=False, kernel=None, one_detrend=False)
         y_pred = np.nan * np.zeros(t_pred.shape)
         sigma = np.nan * np.zeros(t_pred.shape)
 
-    l_pred = reg.predict(t_pred.reshape(-1, 1)).squeeze()
+    if detrend_ls:
+        l_pred = reg.predict(t_pred.reshape(-1, 1)).squeeze()
+        y_out = y_pred.squeeze() + l_pred
+    else:
+        y_out = y_pred.squeeze()
 
     filt_data = data
     filt_data[np.isfinite(data)] = data_vals
 
-    return y_pred.squeeze() + l_pred, sigma.squeeze(), filt_data
+    return y_out, sigma.squeeze(), filt_data
 
 
 def ls(subarr, t_vals, uncert, weigh, filt_ls=False, conf_filt=0.99):
@@ -484,7 +586,7 @@ def ls(subarr, t_vals, uncert, weigh, filt_ls=False, conf_filt=0.99):
 
 @jit
 def gpr_wrapper(argsin):
-    subarr, i, t_vals, uncert, new_t, opt, kernel = argsin
+    subarr, i, t_vals, err_arr, new_t, opt, kernel, uns_arr = argsin
     start = time.time()
     Y, X = subarr[0].shape
     outarr = np.nan * np.zeros((new_t.size * 2, Y, X))
@@ -492,7 +594,12 @@ def gpr_wrapper(argsin):
     # pixel by pixel
     for x in range(X):
         for y in range(Y):
-            tmp_y, tmp_sig, tmp_filt = gpr(subarr[:, y, x], t_vals, uncert, new_t, opt=opt, kernel=kernel)[0:3]
+            if uns_arr is not None:
+                uns_tag = uns_arr[0,y,x]
+            else:
+                uns_tag = True
+            uncert = err_arr[:,y,x]
+            tmp_y, tmp_sig, tmp_filt = gpr(subarr[:, y, x], t_vals, uncert, new_t, opt=opt, not_stable=uns_tag, kernel=kernel)[0:3]
             out = np.concatenate((tmp_y, tmp_sig), axis=0)
             filt_subarr[: , y, x] = tmp_filt
             outarr[:, y, x] = out
@@ -627,9 +734,9 @@ def arr_to_img(ds, out_arr, outfile):
     arr.write(outfile_dmax)
 
 
-def time_filter_ref(ds, t_vals, ref_dem, ref_date, thresh=50, base_thresh=20):
+def time_filter_ref(ds, t_vals, ref_dem, ref_date, thresh=[-10,3], base_thresh=20):
     delta_t = (ref_date - t_vals).astype('timedelta64[D]').astype(float) / 365.24
-    dh = ds - ref_dem.img
+    dh = ref_dem.img - ds
     dt_arr = np.ones(dh.shape)
     for i, d in enumerate(delta_t):
         dt_arr[i] = dt_arr[i] * d
@@ -637,10 +744,7 @@ def time_filter_ref(ds, t_vals, ref_dem, ref_date, thresh=50, base_thresh=20):
         ds[np.abs(dh) > base_thresh + np.abs(dt_arr)*thresh] = np.nan
     else:
         d_data = dh / dt_arr
-        #TODO: not sure about how I wrote this one... need to define the signs of thresh[0] and thresh[1], I guess first should be negative and second positive
-        ds[np.logical_and(d_data < - base_thresh / np.abs(dt_arr) + thresh[0], d_data > -base_thresh / np.abs(dt_arr) + thresh[1])] = np.nan
-    #     ds[np.logical_and(d_data < thresh[0],
-    #                       d_data > thresh[1])] = np.nan
+        ds[np.logical_and(d_data < - base_thresh / np.abs(dt_arr) + thresh[0], d_data > base_thresh / np.abs(dt_arr) + thresh[1])] = np.nan
     return ds
 
 @jit_filter_function
@@ -694,8 +798,9 @@ def spat_filter_ref(ds_arr, ref_dem, cutoff_kern_size=500, cutoff_thr=20.,nproc=
 
     return ds_arr
 
-def fit_stack(fn_stack, fn_ref_dem=None, ref_dem_date=None, filt_ref='min_max', time_filt_thresh=10, inc_mask=None, nproc=1, method='gpr', opt_gpr=False,
-              kernel=None, filt_ls=False, conf_filt_ls=0.99, tstep=0.25, outfile='fit.nc', write_filt=False, clobber=False):
+def fit_stack(fn_stack, subspat=None, fn_ref_dem=None, ref_dem_date=None, filt_ref='min_max', time_filt_thresh=[-10,3],
+              inc_mask=None, gla_mask=None, nproc=1, method='gpr', opt_gpr=False, kernel=None, filt_ls=False,
+              conf_filt_ls=0.99, tstep=0.25, outfile='fit.nc', write_filt=False, clobber=False):
     """
     Given a netcdf stack of DEMs, perform temporal fitting with uncertainty propagation
 
@@ -725,12 +830,22 @@ def fit_stack(fn_stack, fn_ref_dem=None, ref_dem_date=None, filt_ref='min_max', 
     # ds = xr.open_dataset(fn_stack, chunks={'x': 100, 'y': 100})
 
     ds = xr.open_dataset(fn_stack)
+
+    if subspat is not None:
+        xmin, xmax, ymin, ymax = subspat
+        ds = ds.sel(x=slice(xmin,xmax),y=slice(ymin,ymax))
     # ds.load()
     ds_arr = ds.variables['z'].values
 
     if inc_mask is not None:
         land_mask = get_stack_mask(inc_mask, ds)
         ds_arr[:, ~land_mask] = np.nan
+
+    if gla_mask is not None:
+        uns_mask = get_stack_mask(gla_mask, ds)
+        uns_arr = uns_mask[np.newaxis,:,:]
+    else:
+        uns_arr = None
 
     print('Filtering...')
     keep_vals = ds['uncert'].values < 20
@@ -766,6 +881,21 @@ def fit_stack(fn_stack, fn_ref_dem=None, ref_dem_date=None, filt_ref='min_max', 
             print('Filtering using dh/dt value to reference DEM, threshold of {} m/a'.format(time_filt_thresh))
             ds_arr = time_filter_ref(ds_arr, t_vals, ref_dem, ref_dem_date, thresh=time_filt_thresh)
 
+    #get median slope
+    print('Estimating terrain slope to constrain uncertainties...')
+    err_arr = np.zeros(np.shape(ds_arr))
+    for i in range(len(t_vals)):
+        slope = get_slope(st.make_geoimg(ds,i))
+        slope.img[slope.img>70] = np.nan
+        err_arr[i,:,:] = slope.img
+    med_slope = np.nanmedian(err_arr,axis=0)
+
+    #get std, dependent on slope
+    err_arr = np.ones(np.shape(ds_arr))
+    for i, d in enumerate(uncert):
+        err_arr[i] = err_arr[i] * d
+    err_arr = np.sqrt(err_arr**2 + (15*np.tan(med_slope*np.pi/180))**2)
+    err_arr[np.logical_or(~np.isfinite(err_arr),np.abs(err_arr)>50)] = 50
 
     # define temporal prediction vector
     y0 = t_vals[0].astype('datetime64[D]').astype(object).year
@@ -780,7 +910,7 @@ def fit_stack(fn_stack, fn_ref_dem=None, ref_dem_date=None, filt_ref='min_max', 
     if nproc == 1:
         print('Processing with 1 core...')
         if method == 'gpr':
-            out_cube, filt_cube = gpr_wrapper((ds_arr, 0, t_vals, uncert, fit_t, opt_gpr, kernel))
+            out_cube, filt_cube = gpr_wrapper((ds_arr, 0, t_vals, err_arr, fit_t, opt_gpr, kernel, uns_arr))
             cube_to_stack(ds, out_cube, y0, nice_fit_t, outfile=outfile, clobber=clobber)
             if write_filt:
                 cube_to_stack(ds, filt_cube, y0, t_vals, outfile=fn_filt, clobber=clobber)
@@ -798,15 +928,27 @@ def fit_stack(fn_stack, fn_ref_dem=None, ref_dem_date=None, filt_ref='min_max', 
         # now, try to figure out the nicest way to break up the image, given the number of processors
         # there has to be a better way than this... i'll look into it
 
-        # n_x_tiles = np.ceil(ds['x'].shape[0] / 100).astype(int)  # break it into 10x10 tiles
-        # n_y_tiles = np.ceil(ds['y'].shape[0] / 100).astype(int)
-        n_x_tiles = 8
-        n_y_tiles = 8
+        if method in ['ols','wls']:
+            #here calculation is done matricially so we want to use all cores with the largest tiles possible
+            opt_n_tiles = int(np.ceil(np.sqrt(nproc)))
+            n_x_tiles = opt_n_tiles
+            n_y_tiles = opt_n_tiles
+        elif method == 'gpr':
+            #here calculation is within a for loop: better to have small tiles to get an idea of the processing speed
+            n_x_tiles = np.ceil(ds['x'].shape[0] / 100).astype(int)  # break it into 10x10 tiles
+            n_y_tiles = np.ceil(ds['y'].shape[0] / 100).astype(int)
+
         pool = mp.Pool(nproc, maxtasksperchild=1)
         split_arr = splitter(ds_arr, (n_y_tiles, n_x_tiles))
+        split_err = splitter(err_arr, (n_y_tiles,n_x_tiles))
+
+        if uns_arr is not None:
+            split_uns = splitter(uns_arr, (n_y_tiles, n_x_tiles))
+        else:
+            split_uns = [None] * len(split_arr)
 
         if method == 'gpr':
-            argsin = [(s, i, np.copy(t_vals), np.copy(uncert), np.copy(fit_t), opt_gpr, kernel) for i, s in
+            argsin = [(s, i, np.copy(t_vals), split_err[i], np.copy(fit_t), opt_gpr, kernel, split_uns[i]) for i, s in
                       enumerate(split_arr)]
             outputs = pool.map(gpr_wrapper, argsin, chunksize=1)
             pool.close()
