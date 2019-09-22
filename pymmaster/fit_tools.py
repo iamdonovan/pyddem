@@ -64,7 +64,11 @@ def make_dh_animation(ds, month_a_year=None, figsize=(8,10), t0=None, t1=None, d
         ds_sub = ds.sel(time=t_vec)
         # mid = int(np.floor(len(ds_sub.time.values)/2))
 
-    dh_ = ds_sub.variables[var].values - ds_sub.variables[var].values[0]
+    if var == 'z':
+        dh_ = ds_sub.variables[var].values - ds_sub.variables[var].values[0]
+    elif var == 'z_ci':
+        dh_ = ds_sub.variables[var].values
+
     times = np.array([np.datetime_as_string(t.astype('datetime64[D]')) for t in ds_sub.time.values])
     nice_ext = np.array([ds.x.values.min(), ds.x.values.max(), ds.y.values.min(), ds.y.values.max()]) / 1000
     ims = []
@@ -796,7 +800,7 @@ def spat_filter_ref(ds_arr, ref_dem, cutoff_kern_size=500, cutoff_thr=20.,nproc=
 
     return ds_arr
 
-def fit_stack(fn_stack, subspat=None, fn_ref_dem=None, ref_dem_date=None, filt_ref='min_max', time_filt_thresh=[-10,3],
+def fit_stack(fn_stack, subspat=None, fn_ref_dem=None, ref_dem_date=None, filt_ref='min_max', time_filt_thresh=[-30,5],
               inc_mask=None, gla_mask=None, nproc=1, method='gpr', opt_gpr=False, kernel=None, filt_ls=False,
               conf_filt_ls=0.99, tstep=0.25, outfile='fit.nc', write_filt=False, clobber=False):
     """
@@ -871,8 +875,8 @@ def fit_stack(fn_stack, subspat=None, fn_ref_dem=None, ref_dem_date=None, filt_r
         elif filt_ref == 'both':
             print('Filtering using min/max values in {}'.format(fn_ref_dem))
             ds_arr = spat_filter_ref(ds_arr, ref_dem, cutoff_kern_size=200, cutoff_thr=200., nproc=nproc)
-            ds_arr = spat_filter_ref(ds_arr, ref_dem, cutoff_kern_size=500, cutoff_thr=20., nproc=nproc)
-            ds_arr = spat_filter_ref(ds_arr, ref_dem, cutoff_kern_size=2000, cutoff_thr=0, nproc=int(np.floor(nproc/4)))
+            ds_arr = spat_filter_ref(ds_arr, ref_dem, cutoff_kern_size=500, cutoff_thr=50., nproc=nproc)
+            ds_arr = spat_filter_ref(ds_arr, ref_dem, cutoff_kern_size=2000, cutoff_thr=20, nproc=int(np.floor(nproc/4)))
             if ref_dem_date is None:
                 print('Reference DEM time stamp not specified, defaulting to 01.01.2000')
                 ref_dem_date = np.datetime64('2000-01-01')
@@ -893,7 +897,7 @@ def fit_stack(fn_stack, subspat=None, fn_ref_dem=None, ref_dem_date=None, filt_r
     for i, d in enumerate(uncert):
         err_arr[i] = err_arr[i] * d
     err_arr = np.sqrt(err_arr**2 + (15*np.tan(med_slope*np.pi/180))**2)
-    err_arr[np.logical_or(~np.isfinite(err_arr),np.abs(err_arr)>50)] = 50
+    err_arr[np.logical_or(~np.isfinite(err_arr),np.abs(err_arr)>100)] = 100
 
     # define temporal prediction vector
     y0 = t_vals[0].astype('datetime64[D]').astype(object).year
