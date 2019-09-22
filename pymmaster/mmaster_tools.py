@@ -331,7 +331,7 @@ def preprocess(mst_dem, slv_dem, glacmask=None, landmask=None, work_dir='.', out
 
     # co-register master, slave
     coreg_dir = os.path.sep.join([out_dir, 'coreg'])
-    mst_coreg, slv_coreg, shift_params = dem_coregistration(mst_dem, slv_name, glaciermask=glacmask,
+    mst_coreg, slv_coreg, shift_params, _ = dem_coregistration(mst_dem, slv_name, glaciermask=glacmask,
                                                             landmask=landmask, outdir=coreg_dir, pts=pts)
     if shift_params == -1:
         return mst_coreg, slv_coreg, shift_params
@@ -1561,7 +1561,7 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
     ### re-coregister
     print('Re-co-registering DEMs.')
     recoreg_outdir = os.path.sep.join([out_dir, 're-coreg'])
-    mst_coreg, slv_adj_coreg, shift_params2 = dem_coregistration(mst_dem, slv_coreg_xcorr_acorr_jcorr,
+    mst_coreg, slv_adj_coreg, shift_params2, _ = dem_coregistration(mst_dem, slv_coreg_xcorr_acorr_jcorr,
                                                                  glaciermask=glacmask, landmask=landmask,
                                                                  outdir=recoreg_outdir, pts=pts)
     if shift_params2 == -1:
@@ -1584,10 +1584,19 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
         else:
             return
 
+    #write final outputs
     clean_coreg_dir(out_dir, 're-coreg')
     orig_slv.shift(shift_params2[0], shift_params2[1])
     orig_slv.img = orig_slv.img + shift_params2[2]
     orig_slv.write(os.path.splitext(slv_dem)[0] + "_adj_XAJ_final.tif", out_folder=out_dir)
+
+    ast_name = slv_dem.rsplit('_Z.tif')[0]
+    # ortho = GeoImg(ast_name + '_V123.tif')
+    corr = GeoImg(ast_name + '_CORR.tif')
+    # ortho.shift(shift_params2[0], shift_params2[1])
+    # ortho.write(os.path.sep.join([out_dir, '{}_V123_adj_final.tif'.format(ast_name)]), dtype=np.uint8)
+    corr.shift(shift_params2[0], shift_params2[1])
+    corr.write(os.path.sep.join([out_dir, '{}_CORR_adj_final.tif'.format(ast_name)]), dtype=np.uint8)
 
     plt.close("all")
     # clean-up 
@@ -1609,4 +1618,4 @@ def mmaster_bias_removal(mst_dem, slv_dem, glacmask=None, landmask=None,
 
     os.chdir(orig_dir)
     if return_geoimg:
-        return slv_coreg_xcorr_acorr, mst_coreg
+        return slv_adj_coreg, mst_coreg
