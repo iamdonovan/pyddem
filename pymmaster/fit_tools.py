@@ -932,7 +932,7 @@ def fit_stack(fn_stack, subspat=None, fn_ref_dem=None, ref_dem_date=None, filt_r
 
         if method in ['ols','wls']:
             #here calculation is done matricially so we want to use all cores with the largest tiles possible
-            opt_n_tiles = int(np.ceil(np.sqrt(nproc)))
+            opt_n_tiles = int(np.floor(np.sqrt(nproc)))
             n_x_tiles = opt_n_tiles
             n_y_tiles = opt_n_tiles
         elif method == 'gpr':
