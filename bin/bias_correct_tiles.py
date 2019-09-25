@@ -180,7 +180,8 @@ def main():
 
     # clean up after ourselves, remove the vrts we created.
     for d in args.indir:
-        os.remove(os.path.sep.join([d, 'tmp_{}.vrt'.format(d)]))
+        if os.path.exists(os.path.sep.join([d, 'tmp_{}.vrt'.format(d)])):
+            os.remove(os.path.sep.join([d, 'tmp_{}.vrt'.format(d)]))
 
 if __name__ == "__main__":
     main()
