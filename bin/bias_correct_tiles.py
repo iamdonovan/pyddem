@@ -21,8 +21,12 @@ from pymmaster.mmaster_tools import mmaster_bias_removal, get_aster_footprint
 def batch_wrapper(argsin):
     arg_dict, master_tiles, s = argsin
     arg_dict['mst_dem'] = get_tiles(arg_dict['work_dir'], master_tiles, s)
-
-    return mmaster_bias_removal(**arg_dict)
+    if arg_dict['mst_dem'] is None:
+        print('Master DEM tiles do not intersect slave DEM '+arg_dict['slv_dem'])
+        print('Skipping...')
+        return
+    else:
+        return mmaster_bias_removal(**arg_dict)
 
 
 def buffer_conversion(fprint, buff_orig):
@@ -58,9 +62,12 @@ def get_tiles(indir, master_tiles, s):
     # tilelist = [os.path.sep.join([paths[i], subfolders[i], f]) for i, f in enumerate(fnames)]
     tilelist = [os.path.sep.join([paths[i], f]) for i, f in enumerate(fnames)]
     # create a temporary VRT from the tiles
-    gdal.BuildVRT(os.path.sep.join([indir, 'tmp_{}.vrt'.format(dname)]), tilelist, resampleAlg='bilinear')
     # print(os.path.sep.join([os.path.abspath(indir), 'tmp_{}.vrt'.format(dname)]))
-    return os.path.sep.join([os.path.abspath(indir), 'tmp_{}.vrt'.format(dname)])
+    if len(tilelist)>0:
+        gdal.BuildVRT(os.path.sep.join([indir, 'tmp_{}.vrt'.format(dname)]), tilelist, resampleAlg='bilinear')
+        return os.path.sep.join([os.path.abspath(indir), 'tmp_{}.vrt'.format(dname)])
+    else:
+        return None
 
 
 def _argparser():
@@ -141,6 +148,10 @@ def main():
             print('Running bias correction on {}'.format(indir))
             # os.chdir(indir)
             # print(os.getcwd())
+            if mst_dem is None:
+                print('Master DEM tiles do not intersect slave DEM ' + indir)
+                print('Skipping...')
+                continue
             if args.slavedem is None:
                 this_slavedem = indir + '_Z.tif'
                 mmaster_bias_removal(mst_dem,
