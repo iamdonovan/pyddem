@@ -454,6 +454,9 @@ def gpr(data, t_vals, uncert, t_pred, opt=False, kernel=None, not_stable=True, d
         # k2 = C(50) * RBF(1)
         # # k3 = C(10, (1e-3, 1e3)) * RQ(length_scale=30, length_scale_bounds=(30, 1e3))
         # kernel = k1 + k2
+        #TODO: manually normalized x/y because linear kernel is non-stationary
+
+        #TODO: calibrate ESS + RBF kernels with output of variogram estimation (linear is the fit)
 
         # linear kernel + periodic kernel + 3/ non-linearity??
         k1 = C(10) * PairwiseKernel(10, metric='linear')  # linear kernel
@@ -471,7 +474,7 @@ def gpr(data, t_vals, uncert, t_pred, opt=False, kernel=None, not_stable=True, d
 
     num_finite = data_vals.size
     good_vals = np.isfinite(data_vals)
-    max_z_score = [20,15,10,8,6,4]
+    max_z_score = [20,12,9,6,4]
 
     while n_out > 0 and num_finite >= 2 and niter < len(max_z_score):
 
@@ -800,9 +803,9 @@ def spat_filter_ref(ds_arr, ref_dem, cutoff_kern_size=500, cutoff_thr=20.,nproc=
 
     return ds_arr
 
-def fit_stack(fn_stack, subspat=None, fn_ref_dem=None, ref_dem_date=None, filt_ref='min_max', time_filt_thresh=[-30,5],
+def fit_stack(fn_stack, fit_extent=None, fn_ref_dem=None, ref_dem_date=None, filt_ref='min_max', time_filt_thresh=[-30,5],
               inc_mask=None, gla_mask=None, nproc=1, method='gpr', opt_gpr=False, kernel=None, filt_ls=False,
-              conf_filt_ls=0.99, tstep=0.25, outfile='fit.nc', write_filt=False, clobber=False):
+              conf_filt_ls=0.99, tlim=None, tstep=0.25, outfile='fit.nc', write_filt=False, clobber=False):
     """
     Given a netcdf stack of DEMs, perform temporal fitting with uncertainty propagation
 
@@ -833,8 +836,8 @@ def fit_stack(fn_stack, subspat=None, fn_ref_dem=None, ref_dem_date=None, filt_r
 
     ds = xr.open_dataset(fn_stack)
 
-    if subspat is not None:
-        xmin, xmax, ymin, ymax = subspat
+    if fit_extent is not None:
+        xmin, xmax, ymin, ymax = fit_extent
         ds = ds.sel(x=slice(xmin,xmax),y=slice(ymin,ymax))
     # ds.load()
     ds_arr = ds.variables['z'].values
@@ -883,7 +886,7 @@ def fit_stack(fn_stack, subspat=None, fn_ref_dem=None, ref_dem_date=None, filt_r
             print('Filtering using dh/dt value to reference DEM, threshold of {} m/a'.format(time_filt_thresh))
             ds_arr = time_filter_ref(ds_arr, t_vals, ref_dem, ref_dem_date, thresh=time_filt_thresh)
 
-    #get median slope
+    #get median slope from ASTER data + reference DEM if provided (better to avoid having NaN slope on the edge pixels)
     print('Estimating terrain slope to constrain uncertainties...')
     err_arr = np.zeros(np.shape(ds_arr))
     for i in range(len(t_vals)):
@@ -891,6 +894,12 @@ def fit_stack(fn_stack, subspat=None, fn_ref_dem=None, ref_dem_date=None, filt_r
         slope.img[slope.img>70] = np.nan
         err_arr[i,:,:] = slope.img
     med_slope = np.nanmedian(err_arr,axis=0)
+
+    if fn_ref_dem is not None:
+        tmp_dem = GeoImg(fn_ref_dem)
+        slope_all = get_slope(tmp_dem)
+        slope_ref = slope_all.reproject(st.make_geoimg(ds))
+        med_slope[np.isnan(med_slope)] = slope_ref.img[np.isnan(med_slope)]
 
     #get std, dependent on slope
     err_arr = np.ones(np.shape(ds_arr))
@@ -900,8 +909,12 @@ def fit_stack(fn_stack, subspat=None, fn_ref_dem=None, ref_dem_date=None, filt_r
     err_arr[np.logical_or(~np.isfinite(err_arr),np.abs(err_arr)>100)] = 100
 
     # define temporal prediction vector
-    y0 = t_vals[0].astype('datetime64[D]').astype(object).year
-    y1 = t_vals[-1].astype('datetime64[D]').astype(object).year + 1.1
+    if tlim is None:
+        y0 = t_vals[0].astype('datetime64[D]').astype(object).year
+        y1 = t_vals[-1].astype('datetime64[D]').astype(object).year + 1.1
+    else:
+        y0 = tlim[0].astype('datetime64[D]').astype(object).year
+        y1 = tlim[-1].astype('datetime64[D]').astype(object).year + 1.1
     fit_t = np.arange(y0, y1, tstep) - y0
     nice_fit_t = [np.timedelta64(int(d), 'D').astype(int) for d in np.round(fit_t * 365.2524)]
 
