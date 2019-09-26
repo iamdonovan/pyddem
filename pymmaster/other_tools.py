@@ -314,18 +314,9 @@ def poly_from_extent(extent):
 
 def extent_from_poly(poly):
 
-    linearring=poly.GetGeometryRef(0)
+    env = poly.GetEnvelope()
 
-    x1, y1, _ = linearring.GetPoint(0)
-
-    x2, y2, _ = linearring.GetPoint(2)
-
-    xmin=min(x1,x2)
-    ymin=min(y1,y2)
-    xmax=max(x1,x2)
-    ymax=max(y1,y2)
-
-    extent = xmin, ymin, xmax, ymax
+    extent = env[0], env[2], env[1], env[3]
 
     return extent
 
