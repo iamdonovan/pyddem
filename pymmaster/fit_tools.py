@@ -422,7 +422,6 @@ def detrend(t_vals, data, ferr):
 
     return reg
 
-
 def gpr(data, t_vals, uncert, t_pred, opt=False, kernel=None, not_stable=True, detrend_ls=False, loop_detrend=False):
 
     # if only 0 or 1 elevation values in the pixel, no fitting
@@ -454,18 +453,16 @@ def gpr(data, t_vals, uncert, t_pred, opt=False, kernel=None, not_stable=True, d
         # k2 = C(50) * RBF(1)
         # # k3 = C(10, (1e-3, 1e3)) * RQ(length_scale=30, length_scale_bounds=(30, 1e3))
         # kernel = k1 + k2
-        #TODO: manually normalized x/y because linear kernel is non-stationary
 
-        #TODO: calibrate ESS + RBF kernels with output of variogram estimation (linear is the fit)
-
-        # linear kernel + periodic kernel + 3/ non-linearity??
-        k1 = C(10) * PairwiseKernel(10, metric='linear')  # linear kernel
-        k2 = C(10000) * ESS(length_scale=5, periodicity=1)  # periodic kernel
+        # linear kernel + periodic kernel + local kernel
+        k1 = PairwiseKernel(1, metric='linear')  # linear kernel
+        k2 = C(30) * ESS(length_scale=1, periodicity=1)  # periodic kernel
+        # k3 =  #local kernel
+        k3 = C(30) * RBF(1)
         kernel = k1 + k2
         if not_stable:
             # k3 =  #non-linear kernel
-            kernel= kernel + C(10) * RBF(1)
-
+            kernel += k3
 
     # initializing
     n_out = 1
@@ -476,7 +473,15 @@ def gpr(data, t_vals, uncert, t_pred, opt=False, kernel=None, not_stable=True, d
     good_vals = np.isfinite(data_vals)
     max_z_score = [20,12,9,6,4]
 
-    while n_out > 0 and num_finite >= 2 and niter < len(max_z_score):
+    mu_x = np.mean(t_pred)
+
+    # here we need to change the 0 for the x axis, in case we are using a linear kernel
+    t_pred = t_pred - mu_x
+    time_vals = time_vals - mu_x
+
+    while n_out > 0 and num_finite >= 2:
+
+        mu_y = np.nanmean(data_vals)
 
         if detrend_ls:
             # first, remove a linear trend
@@ -493,13 +498,8 @@ def gpr(data, t_vals, uncert, t_pred, opt=False, kernel=None, not_stable=True, d
 
             detr_data_vals = data_vals - l_trend
         else:
-            detr_data_vals = data_vals
-
-        # can probably do it with wls also, as follows (without the std/nmad filtering)
-        # TODO: need to figure out how to deal with a T*1*1 array in "ls"
-        # slope, interc = ls(data_vals, time_vals, err_vals, True)[0:2]
-        # l_trend = interc + slope * time_vals
-        # detr_data_vals = data_vals - l_trend
+            # the mean has to be 0 to do gpr, even if we don't detrend
+            detr_data_vals = data_vals - mu_y
 
         # if we remove a linear trend, normalize_y should be false...
         gp = GaussianProcessRegressor(kernel=kernel, optimizer=optimizer, n_restarts_optimizer=n_restarts_optimizer,
@@ -515,14 +515,15 @@ def gpr(data, t_vals, uncert, t_pred, opt=False, kernel=None, not_stable=True, d
 
         # good elevation values can also be outside 4stds because of bias in the first fits
         # thus, if needed, we remove outliers packet by packet, starting with the largest ones
-        isout = z_score > max_z_score[niter]
+        isout = z_score > max_z_score[min(niter,len(max_z_score)-1)]
         data_vals[isout] = np.nan
 
         good_vals = np.isfinite(data_vals)
         num_finite = np.count_nonzero(good_vals)
         niter += 1
 
-    if num_finite <= 2:
+    # if there is not enough data left...
+    if num_finite < 2:
         y_pred = np.nan * np.zeros(t_pred.shape)
         sigma = np.nan * np.zeros(t_pred.shape)
 
@@ -530,7 +531,7 @@ def gpr(data, t_vals, uncert, t_pred, opt=False, kernel=None, not_stable=True, d
         l_pred = reg.predict(t_pred.reshape(-1, 1)).squeeze()
         y_out = y_pred.squeeze() + l_pred
     else:
-        y_out = y_pred.squeeze()
+        y_out = y_pred.squeeze() + mu_y
 
     filt_data = data
     filt_data[np.isfinite(data)] = data_vals
