@@ -209,7 +209,7 @@ dependencies:
   - widgetsnbextension=3.4.2=py37_0
   - wrapt=1.10.11=py37h14c3975_2
   - wurlitzer=1.0.2=py37_0
-  - xarray=0.11.3=py37_0
+  - xarray=0.12.3=py37_0
   - xerces-c=3.2.2=h780794e_0
   - xlrd=1.2.0=py37_0
   - xz=5.2.4=h14c3975_4

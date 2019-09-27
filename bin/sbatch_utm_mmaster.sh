@@ -8,7 +8,7 @@
 #SBATCH --mail-user=romain.hugonnet@gmail.com
 
 #@author: hugonnet
-#SLURM wrapper for utm zone processing of MicMac/MMASTER (Luc Girod, Chris Nuth, Robert McNabb)
+#wrapper SLURM for utm zone processing of MicMac/MMASTER (Luc Girod, Chris Nuth, Robert McNabb)
 #should be easily adaptable to qsub & others workload managers for HPCs
 
 #basic usage: "sbatch sbatch_mmaster.sh tdir procdir datadir1 datadir2...
@@ -26,6 +26,10 @@ procdir=$2
 # (utm zone directory): usually on storage disks
 shift 2
 
+cdir=$(pwd)
+#list already existing L1A folders in target directory
+cd ${tdir}
+ls -d */AST* | sed 's/.*\///' | sort > ${cdir}/list_done.txt
 
 #number of tasks at a time: we find that the best value of "CPU per MicMac task" is around 4.
 #here we have enough disk speed and RAM to use 4, but depending on the hardware, using more to avoid disk throttling
@@ -39,15 +43,25 @@ echo Started `date`
 #xargs is one of the best option to run serial independent processes in parallel
 #some useful doc for SLURM: https://help.rc.ufl.edu/doc/Sample_SLURM_Scripts
 #and here too: https://scitas-data.epfl.ch/kb/Running+multiple+tasks+on+one+node
-for datadir in "$@"; do
-    cd ${datadir}
-#    ls -d AST*/ >> ${cdir}/tmp_l1a.txt
-    ls -d AST*/ | sed 's/.$//' | xargs -I{} --max-procs=${nr_task} bash -c "srun -N 1 -n 1 --exclusive process_l1a.sh $datadir/{} $tdir $procdir"
 
+rm -f ${cdir}/list_all_todo.txt
+
+for datadir in "$@"; do
+    #copying utm zone for output directory
+    datadir=${datadir%%/}
+    utm_dir=${datadir##*/}
+
+    cd ${datadir}
+    ls -d AST* | sort > ${cdir}/list_${utm_dir}_todo.txt
+
+    #https://unix.stackexchange.com/questions/11343/linux-tools-to-treat-files-as-sets-and-perform-set-operations-on-them
+    comm -23 ${cdir}/list_${utm_dir}_todo.txt ${cdir}/list_done.txt > ${cdir}/list_${utm_dir}_comm.txt
+    cat ${cdir}/list_${utm_dir}_comm.txt | sed "s|^|$datadir/|" >> ${cdir}/list_all_todo.txt
 done
 
-#cat tmp_l1a.txt | head -1 | sed 's/.$//' | xargs -I{} --max-procs=${nr_task} bash -c "srun -N 1 -n 1 --exclusive process_l1a_mmaster.sh $datadir/{} $tdir $procdir"
-#cat tmp_l1a.txt | head -36 | sed 's/.$//' | xargs -I{} --max-procs=$nr_task bash -c "srun -N 1 -n 1 --exclusive echo $datadir/{} $tdir $procpdir"
+cat ${cdir}/list_all_todo.txt | xargs -I{} --max-procs=${nr_task} bash -c 'ddir=$1 ; path_ddir=${ddir%/*} ; utm_dir=${path_ddir##*/} ; srun -N 1 -n 1 --exclusive -t 23:00:00 process_l1a_mmaster.sh $1 $2/$utm_dir $3' -- {} $tdir $procdir
+#cat ${cdir}/list_all_todo.txt | xargs -I{} --max-procs=${nr_task} bash -c 'ddir=$1 ; path_ddir=${ddir%/*} ; utm_dir=${path_ddir##*/} ; echo $1 $2/$utm_dir $3' -- {} $tdir $procdir
+
 wait
 
 echo Finished `date`

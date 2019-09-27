@@ -3,7 +3,6 @@ pymmaster.stack_tools provides tools to create stacks of DEM data, usually MMAST
 """
 from __future__ import print_function
 import os, sys
-
 os.environ["OMP_NUM_THREADS"] = "1"  # export OMP_NUM_THREADS=4
 os.environ["OPENBLAS_NUM_THREADS"] = "1"  # export OPENBLAS_NUM_THREADS=4
 os.environ["MKL_NUM_THREADS"] = "1"  # export MKL_NUM_THREADS=6
@@ -14,7 +13,7 @@ import errno
 # import geopandas as gpd
 import numpy as np
 import datetime as dt
-import gdal
+import gdal, ogr, gdalconst
 import netCDF4
 import geopandas as gpd
 import xarray as xr
@@ -22,13 +21,29 @@ from shapely.geometry.polygon import Polygon
 from shapely.ops import cascaded_union
 from shapely.strtree import STRtree
 from osgeo import osr
+from skimage.morphology import disk
+from scipy.ndimage.morphology import binary_opening
 from pybob.GeoImg import GeoImg
-from pymmaster.mmaster_tools import reproject_geometry
+import pymmaster.mmaster_tools as mt
+import pymmaster.other_tools as ot
 from pybob.coreg_tools import dem_coregistration
 from pybob.bob_tools import mkdir_p
 
 
-def read_stats(fname):
+def read_stats(fdir):
+
+    #search for the stats file in different directory levels
+    list_poss=[os.path.join(fdir,'re-coreg','stats.txt'),os.path.join(fdir,'coreg','stats.txt'),os.path.join(fdir,'stats.txt')]
+    fname = None
+    for poss_fname in list_poss:
+        if os.path.exists(poss_fname):
+            fname = poss_fname
+            break
+
+    if fname is None:
+        print('Could not find a stats.txt file in re-coreg, coreg or root of: '+fdir)
+        sys.exit()
+
     with open(fname, 'r') as f:
         lines = f.readlines()
     stats = lines[0].strip('[ ]\n').split(', ')
@@ -36,6 +51,16 @@ def read_stats(fname):
 
     return dict(zip(stats, after))
 
+def corr_filter_aster(fn_dem,fn_corr,threshold=80):
+
+    dem = GeoImg(fn_dem)
+    corr = GeoImg(fn_corr)
+    corr.img[corr.img < threshold] = 0
+
+    rem_open = binary_opening(corr.img, structure=disk(5))
+    dem.img[~rem_open] = np.nan
+
+    return dem
 
 def parse_date(fname, datestr=None, datefmt=None):
     bname = os.path.splitext(os.path.basename(fname))[0]
@@ -54,6 +79,32 @@ def parse_date(fname, datestr=None, datefmt=None):
             print("I don't recognize how to parse date information from {}.".format(fname))
             return None
     return dt.datetime.strptime(datestr, datefmt)
+
+#faster OGR solution for rasters + read l1a metadata if files are zipped
+def get_footprints_inters_ext(filelist, extent_base, epsg_base, use_l1a_met=False):
+
+    list_poly = []
+    for f in filelist:
+        if use_l1a_met:
+            poly=ot.l1astrip_polygon(os.path.dirname(f))
+            trans=ot.coord_trans(False,4326,False,epsg_base)
+            poly.Transform(trans)
+        else:
+            ext, proj = ot.extent_rast(f)
+            poly = ot.poly_from_extent(ext)
+            trans= ot.coord_trans(True,proj,False,epsg_base)
+            poly.Transform(trans)
+        list_poly.append(poly)
+
+    poly_ext = ot.poly_from_extent(extent_base)
+
+    filelist_out = []
+    for poly in list_poly:
+        inters = poly.Intersection(poly_ext)
+        if not inters.IsEmpty():
+            filelist_out.append(filelist[list_poly.index(poly)])
+
+    return filelist_out
 
 
 def get_footprints(filelist, proj4=None):
@@ -81,7 +132,7 @@ def get_footprints(filelist, proj4=None):
     for f in filelist:
         tmp = GeoImg(f)
         fp = Polygon(tmp.find_corners(mode='xy'))
-        fprints.append(reproject_geometry(fp, tmp.proj4, this_proj4))
+        fprints.append(mt.reproject_geometry(fp, tmp.proj4, this_proj4))
 
     return fprints, this_proj4
 
@@ -187,13 +238,12 @@ def create_nc(img, outfile='mmaster_stack.nc', clobber=False, t0=None):
     to.calendar = 'standard'
     to.standard_name = 'date'
 
-    # TODO: added chunksizes here, but it doesn't seem to change the slow reading speed in fit_tools...
-    xo = nco.createVariable('x', 'f4', ('x'), chunksizes=[10])
+    xo = nco.createVariable('x', 'f4', ('x')) #, chunksizes=[10])
     xo.units = 'm'
     xo.standard_name = 'projection_x_coordinate'
     xo.axis = 'X'
 
-    yo = nco.createVariable('y', 'f4', ('y'), chunksizes=[10])
+    yo = nco.createVariable('y', 'f4', ('y')) # chunksizes=[10])
     yo.units = 'm'
     yo.standard_name = 'projection_y_coordinate'
     yo.axis = 'Y'
@@ -215,6 +265,67 @@ def get_tiles(bounds, master_tiles, s, name):
     # print(os.path.sep.join([os.path.abspath(indir), 'tmp_{}.vrt'.format(dname)]))
     return '{}_mst.vrt'.format(name)
 
+def extent_stack(ds):
+
+    xmin = np.round(ds.x.min().values).astype(float)
+    xmax = np.round(ds.x.max().values).astype(float)
+    ymin = np.round(ds.y.min().values).astype(float)
+    ymax = np.round(ds.y.max().values).astype(float)
+
+    extent = [xmin, ymin, xmax, ymax]
+    proj = ds.crs.spatial_ref
+
+    return extent, proj
+
+def open_datasets(list_fn_stack):
+
+    list_ds=[]
+    for fn_stack in list_fn_stack:
+        ds = xr.open_dataset(fn_stack)
+        list_ds.append(ds)
+
+    return list_ds
+
+def combine_stacks(list_ds):
+
+    #get list of crs, and choose crs the most frequent as the reference for combining all datasets
+    list_crs = []
+    for ds in list_ds:
+        list_crs.append(ds.crs.spatial_ref)
+    if len(set(list_crs)) > 1:
+        crs_ref = max(set(list_crs),key=list_crs.count)
+    else:
+        crs_ref = list_crs[0]
+
+    #reproject stacks to crs_ref if needed
+    list_ds_commonproj = []
+    for i in range(len(list_ds)):
+        crs = list_crs[i]
+        ds = list_ds[i]
+        if not crs == crs_ref:
+            ds_proj = reproj_stack(ds,crs_ref)
+            list_ds_commonproj.append(ds_proj)
+        else:
+            list_ds_commonproj.append(ds)
+
+    #merge all stacks
+    ds_combined = merge_stacks(list_ds_commonproj)
+
+    return ds_combined
+
+def merge_stacks(list_ds):
+
+    #works as we intend only if coordinates are aligned (see nice coords in other_tools) AND if no values other than NaN intersect (hence the latlontile_nodata mask in stack_tools)
+    ds = xr.merge(list_ds)
+
+    #a lot faster if tiles are not-overlapping tiles in a given projection (works as intended if xarray >= 0.12.3) ; this is impossible for lat/lon tiles in UTM
+    #ds = xr.combine_by_coords(list_ds)
+
+    return ds
+
+def reproj_stack(ds,proj_out,niceextent=True,latlontile_nodata=True):
+
+    pass
 
 def make_geoimg(ds, band=0):
     """
@@ -245,27 +356,10 @@ def make_geoimg(ds, band=0):
 
     return GeoImg(dst)
 
-
-def extract_dem():
-    # TODO: stack to GeoImg slice at a time t
-    # temporal interpolation choice: linear or neirest neighbour? (for raw stack or fitted stack)
-    # get interpolated error map as well if sigma exists
-    pass
-
-
-def extract_ddem():
-    # TODO: same but get dDEM slice into a GeoImg between times t0 and t1
-    pass
-
-
-def extract_pixel():
-    # TODO: extract stack for 1 pixel given either coordinates, or row/col numbers
-    pass
-
-
 def create_mmaster_stack(filelist, extent=None, res=None, epsg=None, outfile='mmaster_stack.nc',
                          clobber=False, uncert=False, coreg=False, mst_tiles=None,
-                         exc_mask=None, inc_mask=None, outdir='tmp', filt_dem=None):
+                         exc_mask=None, inc_mask=None, outdir='tmp', filt_dem=None, add_ref=False,
+                         latlontile_nodata=None, filt_mm_corr=False, l1a_zipped=False, y0=1900):
     """
     Given a list of DEM files, create a stacked NetCDF file.
 
@@ -282,6 +376,9 @@ def create_mmaster_stack(filelist, extent=None, res=None, epsg=None, outfile='mm
     :param inc_mask: Filename of inclusion mask (i.e., land) to use in co-registration.
     :param outdir: Output directory for temporary files.
     :param filt_dem: Filename of DEM to filter elevation differences to.
+    :param add_ref: Add reference DEM as a stack variable
+    :param latlontile_nodata: Apply nodata for a lat/lon tile footprint to avoid overlapping and simplify xarray merging
+    :param filt_mm_corr: Filter MMASTER DEM with correlation mask out of mmaster_tools when stacking (disk space)
 
     :type filelist: array-like
     :type extent: array-like
@@ -296,10 +393,12 @@ def create_mmaster_stack(filelist, extent=None, res=None, epsg=None, outfile='mm
     :type inc_mask: str
     :type outdir: str
     :type filt_dem: str
+    :type add_ref: bool
+    :type latlontile_nodata: str
+    :type filt_mm_corr: bool
 
     :returns nco: NetCDF Dataset of stacked DEMs.
     """
-    # TODO: could be practical to use a reference DEM as extent input as well
     if extent is not None:
         if type(extent) in [list, tuple]:
             xmin, xmax, ymin, ymax = extent
@@ -312,22 +411,31 @@ def create_mmaster_stack(filelist, extent=None, res=None, epsg=None, outfile='mm
     else:
         xmin, xmax, ymin, ymax = get_common_bbox(filelist, epsg)
 
-    if coreg and mst_tiles is not None:
-        master_tiles = gpd.read_file(mst_tiles)
-        s = STRtree([f for f in master_tiles['geometry'].values])
-        bounds = Polygon([(xmin, ymin), (xmax, ymin), (xmax, ymax), (xmin, ymax)])
-        mst_vrt = get_tiles(bounds, master_tiles, s, outdir)
-        mst = GeoImg(mst_vrt)
-
+    print('Searching for intersecting DEMs among the list of '+str(len(filelist))+'...')
     # check if each footprint falls within our given extent, and if not - remove from the list.
-    # fprints = get_footprints(filelist, epsg)
-    # red_filelist = [f for i, f in filelist if extPoly.intersects(fprints[i])]
+    if l1a_zipped:
+        #if l1a are zipped, too long to extract archives and read extent from rasters ; so read metadata instead
+        l1a_filelist = [fn for fn in filelist if os.path.basename(fn)[0:3]=='AST']
+        rest_filelist = [fn for fn in filelist if fn not in l1a_filelist]
+        l1a_inters = get_footprints_inters_ext(l1a_filelist,[xmin,ymin,xmax,ymax],epsg,use_l1a_met=True)
+        rest_inters = get_footprints_inters_ext(rest_filelist,[xmin,ymin,xmax,ymax],epsg)
+        filelist = l1a_inters + rest_inters
+
+    else:
+        filelist = get_footprints_inters_ext(filelist,[xmin,ymin,xmax,ymax],epsg)
+    print('Found '+str(len(filelist))+'.')
 
     datelist = np.array([parse_date(f) for f in filelist])
     sorted_inds = np.argsort(datelist)
 
-    print(filelist[sorted_inds[0]])
-    tmp_img = GeoImg(filelist[sorted_inds[0]])
+    if l1a_zipped:
+        tmp_zip = filelist[sorted_inds[0]]
+        z_name = '_'.join(os.path.basename(tmp_zip).split('_')[0:3]) + '_Z_adj_XAJ_final.tif'
+        fn_tmp = os.path.join(os.path.dirname(tmp_zip),'tmp_out.tif')
+        mt.extract_file_from_zip(tmp_zip,z_name,fn_tmp)
+        tmp_img = GeoImg(fn_tmp)
+    else:
+        tmp_img = GeoImg(filelist[sorted_inds[0]])
 
     if res is None:
         res = np.round(tmp_img.dx)  # make sure that we have a nice resolution for gdal
@@ -340,14 +448,19 @@ def create_mmaster_stack(filelist, extent=None, res=None, epsg=None, outfile='mm
                      xRes=res, yRes=res, outputBounds=(xmin, ymin, xmax, ymax),
                      resampleAlg=gdal.GRA_Bilinear)
 
+    if l1a_zipped:
+        os.remove(fn_tmp)
+
     first_img = GeoImg(dest)
+
     first_img.filename = filelist[sorted_inds[0]]
+
     # NetCDF assumes that coordinates are the cell center
     if first_img.is_area():
         first_img.to_point()
     # first_img.info()
 
-    nco, to, xo, yo = create_nc(first_img.img, outfile, clobber)
+    nco, to, xo, yo = create_nc(first_img.img, outfile=outfile, clobber=clobber, t0=np.datetime64('{}-01-01'.format(y0)))
     create_crs_variable(first_img.epsg, nco)
     # crso.GeoTransform = ' '.join([str(i) for i in first_img.gd.GetGeoTransform()])
 
@@ -362,56 +475,80 @@ def create_mmaster_stack(filelist, extent=None, res=None, epsg=None, outfile='mm
     zo.coordinates = 'x y'
     zo.set_auto_mask(True)
 
+    if mst_tiles is not None:
+        if mst_tiles.endswith('.shp'):
+            master_tiles = gpd.read_file(mst_tiles)
+            s = STRtree([f for f in master_tiles['geometry'].values])
+            bounds = Polygon([(xmin, ymin), (xmax, ymin), (xmax, ymax), (xmin, ymax)])
+            mst_vrt = get_tiles(bounds, master_tiles, s, outdir)
+        elif mst_tiles.endswith('.vrt') or mst_tiles.endswith('.tif'):
+            mst_vrt = mst_tiles
+        mst = GeoImg(mst_vrt)
+
     if filt_dem is not None:
         filt_dem_img = GeoImg(filt_dem)
         filt_dem = filt_dem_img.reproject(first_img)
+
+    # make sure we have no overlapping pixels between tile: makes it SO MUCH easier to merge with xarray + speed up process
+    if latlontile_nodata is not None and epsg is not None:
+        mask = ot.latlontile_nodatamask(first_img, latlontile_nodata, ot.utm_from_epsg(epsg))
 
     if uncert:
         uo = nco.createVariable('uncert', 'f4', ('time',))
         uo.long_name = 'RMSE of stable terrain differences.'
         uo.units = 'meters'
 
+    if add_ref and mst_tiles is not None:
+        ro = nco.createVariable('ref_z','f4',('y','x'), fill_value=-9999)
+        ro.units = 'meters'
+        ro.long_name = 'Height above WGS84 ellipsoid'
+        ro.grid_mapping = 'crs'
+        ro.coordinates = 'x y'
+        ro.set_auto_mask(True)
+        mst_img = mst.reproject(first_img).img
+        if latlontile_nodata is not None and epsg is not None:
+            mst_img[~mask] = np.nan
+            ro[: , :] = mst_img
+
     x, y = first_img.xy(grid=False)
     xo[:] = x
     yo[:] = y
-    to[0] = datelist[sorted_inds[0]].toordinal() - dt.date(1900, 1, 1).toordinal()
-    go[0] = os.path.basename(filelist[sorted_inds[0]]).rsplit('.tif', 1)[0]
-    if coreg:
-        NDV = tmp_img.NDV
-        if tmp_img.is_area():
-            tmp_img.to_point()
 
-        _, img, _ = dem_coregistration(mst, tmp_img, glaciermask=exc_mask, landmask=inc_mask, outdir=outdir)
-        dest = gdal.Warp('', img.gd, format='MEM', dstSRS='EPSG:{}'.format(epsg),
-                         xRes=res, yRes=res, outputBounds=(xmin, ymin, xmax, ymax),
-                         resampleAlg=gdal.GRA_Bilinear, srcNodata=NDV, dstNodata=-9999)
-        img = GeoImg(dest)
-        if filt_dem is not None:
-            valid = np.logical_and(img.img - filt_dem.img > -400,
-                                   img.img - filt_dem.img < 1000)
-            img.img[~valid] = np.nan
-        zo[0, :, :] = img.img
-        if uncert:
-            stats = read_stats('{}/stats.txt'.format(outdir))
-            uo[0] = stats['RMSE']
-    else:
-        zo[0, :, :] = first_img.img
-        if uncert:
-            # stats = read_stats(filelist[sorted_inds[0]].replace('.tif', '.txt'))
-            # TODO: after current mmaster_bias_correct, stats file is stored in re-coreg... need to use something less filename dependent
-            stats = read_stats(os.path.join(os.path.dirname(filelist[sorted_inds[0]]), 're-coreg', 'stats.txt'))
-            uo[0] = stats['RMSE']
-
-    outind = 1
-    for ind in sorted_inds[1:]:
+    outind = 0
+    for ind in sorted_inds[0:]:
         print(filelist[ind])
-        img = GeoImg(filelist[ind])
+        #get instrument
+        bname = os.path.splitext(os.path.basename(filelist[ind]))[0]
+        splitname = bname.split('_')
+        instru = splitname[0]
+        #special case for MMASTER outputs (for disk usage)
+        if instru == 'AST':
+            fn_z = '_'.join(splitname[0:3]) + '_Z_adj_XAJ_final.tif'
+            fn_z_tmp = os.path.join(os.path.dirname(filelist[ind]), fn_z)
+            fn_corr = '_'.join(splitname[0:3]) + '_CORR_adj_final.tif'
+            fn_corr_tmp = os.path.join(os.path.dirname(filelist[ind]), fn_corr)
+            list_fn_rm = [fn_z_tmp, fn_corr_tmp]
+            #unzip if needed
+            if l1a_zipped:
+                mt.extract_file_from_zip(filelist[ind],fn_z,fn_z_tmp)
+                if filt_mm_corr:
+                    mt.extract_file_from_zip(filelist[ind],fn_corr,fn_corr_tmp)
+            #open dem, filter with correlation mask if it comes out of MMASTER
+            if filt_mm_corr:
+                img = corr_filter_aster(fn_z_tmp,fn_corr_tmp,70)
+            else:
+                img = GeoImg(fn_z_tmp)
+        else:
+            img = GeoImg(filelist[ind])
+
         if img.is_area():  # netCDF assumes coordinates are the cell center
             img.to_point()
+
         if coreg:
             try:
                 NDV = img.NDV
-                _, img, _ = dem_coregistration(mst, img, glaciermask=exc_mask, landmask=inc_mask, outdir=outdir)
+                coreg_outdir = os.path.join(outdir,os.path.basename(filelist[ind]).rsplit('.tif', 1)[0])
+                _, img, _ , stats_final = dem_coregistration(mst, img, glaciermask=exc_mask, landmask=inc_mask, outdir=coreg_outdir, inmem=True)
                 dest = gdal.Warp('', img.gd, format='MEM', dstSRS='EPSG:{}'.format(epsg),
                                  xRes=res, yRes=res, outputBounds=(xmin, ymin, xmax, ymax),
                                  resampleAlg=gdal.GRA_Bilinear, srcNodata=NDV, dstNodata=-9999)
@@ -420,24 +557,56 @@ def create_mmaster_stack(filelist, extent=None, res=None, epsg=None, outfile='mm
                     valid = np.logical_and(img.img - filt_dem.img > -400,
                                            img.img - filt_dem.img < 1000)
                     img.img[~valid] = np.nan
+                if latlontile_nodata is not None and epsg is not None:
+                    img.img[~mask] = np.nan
+                nvalid = np.count_nonzero(~np.isnan(img.img))
+                if nvalid == 0:
+                    print('No valid pixel in the stack extent: skipping...')
+                    if l1a_zipped and (instru == 'AST'):
+                        for fn_rm in list_fn_rm:
+                            if os.path.exists(fn_rm):
+                                os.remove(fn_rm)
+                    continue
                 zo[outind, :, :] = img.img
                 if uncert:
-                    stats = read_stats('{}/stats.txt'.format(outdir))
-                    uo[outind] = stats['RMSE']
+                    uo[outind] = stats_final[3]
+                print('Adding DEM that has '+str(nvalid)+' valid pixels in this extent, with a global RMSE of '+str(stats_final[3]))
             except:
+                print('Coregistration failed: skipping...')
+                if l1a_zipped and (instru == 'AST'):
+                    for fn_rm in list_fn_rm:
+                        if os.path.exists(fn_rm):
+                            os.remove(fn_rm)
                 continue
 
         else:
             img = img.reproject(first_img)
+            if filt_dem is not None:
+                valid = np.logical_and(img.img - filt_dem.img > -400,
+                                       img.img - filt_dem.img < 1000)
+                img.img[~valid] = np.nan
+            if latlontile_nodata is not None and epsg is not None:
+                img.img[~mask] = np.nan
+            nvalid = np.count_nonzero(~np.isnan(img.img))
+            if nvalid == 0:
+                print('No valid pixel in the stack extent: skipping...')
+                if l1a_zipped and (instru == 'AST'):
+                    for fn_rm in list_fn_rm:
+                        if os.path.exists(fn_rm):
+                            os.remove(fn_rm)
+                continue
             zo[outind, :, :] = img.img
             if uncert:
-                # stats = read_stats(filelist[ind].replace('.tif', '.txt'))
-                # TODO: same here
-                stats = read_stats(os.path.join(os.path.dirname(filelist[ind]), 're-coreg', 'stats.txt'))
+                stats = read_stats(os.path.dirname(filelist[sorted_inds[ind]]))
                 uo[outind] = stats['RMSE']
         to[outind] = datelist[ind].toordinal() - dt.date(1900, 1, 1).toordinal()
         go[outind] = os.path.basename(filelist[ind]).rsplit('.tif', 1)[0]
         zo[outind, :, :] = img.img
         outind += 1
+
+        if l1a_zipped and (instru=='AST'):
+            for fn_rm in list_fn_rm:
+                if os.path.exists(fn_rm):
+                    os.remove(fn_rm)
 
     return nco

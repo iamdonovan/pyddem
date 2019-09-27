@@ -8,7 +8,6 @@ os.environ["VECLIB_MAXIMUM_THREADS"] = "1"  # export VECLIB_MAXIMUM_THREADS=4
 os.environ["NUMEXPR_NUM_THREADS"] = "1"  # export NUMEXPR_NUM_THREADS=6
 import argparse
 import multiprocessing as mp
-from glob import glob
 import matplotlib
 matplotlib.use('Agg')
 import numpy as np
@@ -22,8 +21,12 @@ from pymmaster.mmaster_tools import mmaster_bias_removal, get_aster_footprint
 def batch_wrapper(argsin):
     arg_dict, master_tiles, s = argsin
     arg_dict['mst_dem'] = get_tiles(arg_dict['work_dir'], master_tiles, s)
-
-    return mmaster_bias_removal(**arg_dict)
+    if arg_dict['mst_dem'] is None:
+        print('Master DEM tiles do not intersect slave DEM '+arg_dict['slv_dem'])
+        print('Skipping...')
+        return
+    else:
+        return mmaster_bias_removal(**arg_dict)
 
 
 def buffer_conversion(fprint, buff_orig):
@@ -59,9 +62,12 @@ def get_tiles(indir, master_tiles, s):
     # tilelist = [os.path.sep.join([paths[i], subfolders[i], f]) for i, f in enumerate(fnames)]
     tilelist = [os.path.sep.join([paths[i], f]) for i, f in enumerate(fnames)]
     # create a temporary VRT from the tiles
-    gdal.BuildVRT(os.path.sep.join([indir, 'tmp_{}.vrt'.format(dname)]), tilelist, resampleAlg='bilinear')
     # print(os.path.sep.join([os.path.abspath(indir), 'tmp_{}.vrt'.format(dname)]))
-    return os.path.sep.join([os.path.abspath(indir), 'tmp_{}.vrt'.format(dname)])
+    if len(tilelist)>0:
+        gdal.BuildVRT(os.path.sep.join([indir, 'tmp_{}.vrt'.format(dname)]), tilelist, resampleAlg='bilinear')
+        return os.path.sep.join([os.path.abspath(indir), 'tmp_{}.vrt'.format(dname)])
+    else:
+        return None
 
 
 def _argparser():
@@ -84,6 +90,8 @@ def _argparser():
                         help='inclusion mask. Areas outside of this mask (i.e., water)\
                              will not be used for coregistration. [None]')
     parser.add_argument('-n', '--nproc', type=int, default=1, help='number of processors to use [1].')
+    parser.add_argument('-t', '--tmpdir', type=str, default=None,
+                        help='tmp directory to process files to [None]')
     parser.add_argument('-o', '--outdir', type=str, default='biasrem',
                         help='directory to output files to (creates if not already present). [.]')
     parser.add_argument('-p', '--points', action='store_true', default=False,
@@ -121,6 +129,7 @@ def main():
                     'landmask': args.inc_mask,
                     'pts': args.points,
                     'out_dir': args.outdir,
+                    'tmp_dir' : args.tmpdir,
                     'return_geoimg': False,
                     'write_log': True,
                     'zipped': args.zip}
@@ -134,22 +143,24 @@ def main():
         pool.close()
         pool.join()
     else:
-        odir = os.getcwd()
         for i, indir in enumerate(args.indir):
             mst_dem = get_tiles(indir, master_tiles, s)
             print('Running bias correction on {}'.format(indir))
-            os.chdir(indir)
+            # os.chdir(indir)
             # print(os.getcwd())
+            if mst_dem is None:
+                print('Master DEM tiles do not intersect slave DEM ' + indir)
+                print('Skipping...')
+                continue
             if args.slavedem is None:
-                if args.zip:
-                    this_slavedem = os.path.splitext(glob('AST*.zip'))[0] + '_Z.tif'
-                else:
-                    this_slavedem = glob('AST*_Z.tif')[0]
+                this_slavedem = indir + '_Z.tif'
                 mmaster_bias_removal(mst_dem,
                                      this_slavedem,
                                      glacmask=args.exc_mask,
                                      landmask=args.inc_mask,
+                                     work_dir=indir,
                                      out_dir=args.outdir,
+                                     tmp_dir=args.tmpdir,
                                      pts=args.points,
                                      return_geoimg=False,
                                      write_log=args.log,
@@ -159,17 +170,18 @@ def main():
                                      args.slavedem,
                                      glacmask=args.exc_mask,
                                      landmask=args.inc_mask,
+                                     work_dir=indir,
                                      out_dir=args.outdir,
+                                     tmp_dir=args.tmpdir,
                                      pts=args.points,
                                      return_geoimg=False,
                                      write_log=args.log,
                                      zipped=args.zip)
-            os.chdir(odir)
 
     # clean up after ourselves, remove the vrts we created.
     for d in args.indir:
-        os.remove(os.path.sep.join([d, 'tmp_{}.vrt'.format(d)]))
-
+        if os.path.exists(os.path.sep.join([d, 'tmp_{}.vrt'.format(d)])):
+            os.remove(os.path.sep.join([d, 'tmp_{}.vrt'.format(d)]))
 
 if __name__ == "__main__":
     main()

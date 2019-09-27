@@ -170,6 +170,18 @@ def get_poly_centroid(poly):
     return center_lon, center_lat
 
 
+def poly_from_coords(list_coord):
+    # creating granule polygon
+    ring = ogr.Geometry(ogr.wkbLinearRing)
+    for coord in list_coord:
+        ring.AddPoint(coord[0], coord[1])
+
+    poly = ogr.Geometry(ogr.wkbPolygon)
+    poly.AddGeometry(ring)
+
+    return poly
+
+
 def sort_l1a_by_region(list_pulldir, list_shp, out_dir):
     # first, load shapefiles of region polygons
     list_poly_shp = []
@@ -188,17 +200,37 @@ def sort_l1a_by_region(list_pulldir, list_shp, out_dir):
                 len(list_l1af)) + ' of archive ' + os.path.basename(pulldir) + ':' + os.path.basename(l1af))
             lat_tup, lon_tup, _, _, df, _ = extract_odl_astL1A(l1af)
 
-            list_coord = (
-            [lon_tup[0], lat_tup[0]], [lon_tup[1], lat_tup[1]], [lon_tup[2], lat_tup[2]], [lon_tup[3], lat_tup[3]],
-            [lon_tup[0], lat_tup[0]])
+            max_lon = np.max(lon_tup)
+            min_lon = np.min(lon_tup)
 
-            # creating granule polygon
-            ring = ogr.Geometry(ogr.wkbLinearRing)
-            for coord in list_coord:
-                ring.AddPoint(coord[0], coord[1])
+            if min_lon < -160 and max_lon > 160:
+                # dateline exception...
 
-            poly = ogr.Geometry(ogr.wkbPolygon)
-            poly.AddGeometry(ring)
+                # let's do two full polygons from each side of the dateline...
+                lon_rightside = np.array(lon_tup, dtype=float)
+                lon_rightside[lon_rightside < -160] += 360
+
+                lon_leftside = np.array(lon_tup, dtype=float)
+                lon_leftside[lon_leftside > 160] -= 360
+
+                rightside_coord = list(zip(list(lon_rightside) + [lon_rightside[0]], lat_tup + [lat_tup[0]]))
+                rightside_poly = poly_from_coords(rightside_coord)
+
+                leftside_coord = list(zip(list(lon_leftside) + [lon_leftside[0]], lat_tup + [lat_tup[0]]))
+                leftside_poly = poly_from_coords(leftside_coord)
+
+                # create a world polygon and get intersection
+                world_coord = [(-180, -90), (-180, 90), (180, 90), (180, -90), (-180, -90)]
+                world_poly = poly_from_coords(world_coord)
+
+                leftside_inters = world_poly.Intersection(leftside_poly)
+                rightside_inters = world_poly.Intersection(rightside_poly)
+
+                poly = polygon_list_to_multipoly([leftside_inters,rightside_inters])
+            else:
+                list_coord = list(zip(lon_tup + [lon_tup[0]], lat_tup + [lat_tup[0]]))
+                poly = poly_from_coords(list_coord)
+
             poly2 = poly.Buffer(0.5)
             # find all non-empty rgi intersections
             rgi_reg_to_copy = []
@@ -415,18 +447,38 @@ def sort_strip_by_utm(dir_l1a):
         for l1a in strip_l1a:
             lat_tup, lon_tup, _, _, _, _ = extract_odl_astL1A(l1a)
 
-            list_coord = (
-                [lon_tup[0], lat_tup[0]], [lon_tup[1], lat_tup[1]], [lon_tup[2], lat_tup[2]], [lon_tup[3], lat_tup[3]],
-                [lon_tup[0], lat_tup[0]])
+            max_lon = np.max(lon_tup)
+            min_lon = np.min(lon_tup)
 
-            # creating granule polygon
-            ring = ogr.Geometry(ogr.wkbLinearRing)
-            for coord in list_coord:
-                ring.AddPoint(coord[0], coord[1])
+            if min_lon < -160 and max_lon > 160:
+                # if this is happening, ladies and gentlemen, bad news, we definitely have an image on the dateline
 
-            poly = ogr.Geometry(ogr.wkbPolygon)
-            poly.AddGeometry(ring)
-            list_poly.append(poly)
+                # let's do two full polygons from each side of the dateline...
+                lon_rightside = np.array(lon_tup, dtype=float)
+                lon_rightside[lon_rightside < -160] += 360
+
+                lon_leftside = np.array(lon_tup, dtype=float)
+                lon_leftside[lon_leftside > 160] -= 360
+
+                rightside_coord = list(zip(list(lon_rightside) + [lon_rightside[0]], lat_tup + [lat_tup[0]]))
+                rightside_poly = poly_from_coords(rightside_coord)
+
+                leftside_coord = list(zip(list(lon_leftside) + [lon_leftside[0]], lat_tup + [lat_tup[0]]))
+                leftside_poly = poly_from_coords(leftside_coord)
+
+                # create a world polygon and get intersection
+                world_coord = [(-180, -90), (-180, 90), (180, 90), (180, -90), (-180, -90)]
+                world_poly = poly_from_coords(world_coord)
+
+                leftside_inters = world_poly.Intersection(leftside_poly)
+                rightside_inters = world_poly.Intersection(rightside_poly)
+
+                # add both to list
+                list_poly += [leftside_inters, rightside_inters]
+            else:
+                list_coord = list(zip(lon_tup + [lon_tup[0]], lat_tup + [lat_tup[0]]))
+                poly = poly_from_coords(list_coord)
+                list_poly.append(poly)
 
         multipoly = polygon_list_to_multipoly(list_poly)
         union = union_cascaded_multipoly(multipoly)
