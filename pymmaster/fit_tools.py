@@ -509,13 +509,13 @@ def gpr(data, t_vals, uncert, t_pred, opt=False, kernel=None, not_stable=True, d
         y_, s_ = interp_data(t_pred, y_pred.squeeze(), sigma.squeeze(), time_vals)
         z_score = np.abs(detr_data_vals - y_) / s_
 
-        isin = z_score < 4
+        isin = np.logical_or(z_score < 4, ~np.isfinite(z_score))
         #we continue the loop if there is a least one value outside 4 stds
         n_out = np.count_nonzero(~isin)
 
         # good elevation values can also be outside 4stds because of bias in the first fits
         # thus, if needed, we remove outliers packet by packet, starting with the largest ones
-        isout = z_score > max_z_score[min(niter,len(max_z_score)-1)]
+        isout = np.logical_and(z_score > max_z_score[min(niter,len(max_z_score)-1)],np.isfinite(z_score))
         data_vals[isout] = np.nan
 
         good_vals = np.isfinite(data_vals)
