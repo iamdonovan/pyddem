@@ -22,7 +22,7 @@ from scipy import stats
 from scipy.interpolate import interp1d
 from scipy.ndimage import filters
 from skimage.morphology import disk
-from sklearn.metrics.pairwise import linear_kernel
+# from sklearn.metrics.pairwise import linear_kernel
 from sklearn.linear_model import LinearRegression
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, ConstantKernel as C, RationalQuadratic as RQ, ExpSineSquared as ESS, PairwiseKernel
