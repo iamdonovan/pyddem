@@ -9,13 +9,13 @@ os.environ["MKL_NUM_THREADS"] = "1"  # export MKL_NUM_THREADS=6
 os.environ["VECLIB_MAXIMUM_THREADS"] = "1"  # export VECLIB_MAXIMUM_THREADS=4
 os.environ["NUMEXPR_NUM_THREADS"] = "1"  # export NUMEXPR_NUM_THREADS=6
 import time
-import errno
+# import errno
 # import geopandas as gpd
 import numpy as np
 import datetime as dt
 import gdal
-import ogr
-import gdalconst
+# import ogr
+# import gdalconst
 import netCDF4
 import geopandas as gpd
 import xarray as xr

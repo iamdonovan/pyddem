@@ -10,16 +10,16 @@ from itertools import groupby
 from operator import itemgetter
 import math as m
 import gdal
-import ogr
-import osr
-import gdalconst
-from scipy.interpolate import interp1d
-import pymmaster.fit_tools as ft
+# import ogr
+# import osr
+# import gdalconst
+# from scipy.interpolate import interp1d
+# import pymmaster.fit_tools as ft
 import pymmaster.stack_tools as st
 import pymmaster.other_tools as ot
-import pybob.ddem_tools as dt
+# import pybob.ddem_tools as dt
 from pybob.coreg_tools import get_slope
-import pandas as pd
+# import pandas as pd
 # from mblib import vol_hypso_linear
 
 # fn_stack = '/media/atom/Data/tmp/N72W078_final.nc'

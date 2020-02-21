@@ -13,7 +13,7 @@ import pandas as pd
 import xarray as xr
 import matplotlib.pylab as plt
 import multiprocessing as mp
-import matplotlib
+# import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib import animation
 from mpl_toolkits.axes_grid1 import make_axes_locatable

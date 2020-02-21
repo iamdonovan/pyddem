@@ -30,7 +30,7 @@ autodoc_mock_imports = ['numpy', 'scipy', 'matplotlib', 'fiona', 'cv2', 'pyvips'
                         'numpy.polynomial.polynomial', 'matplotlib.pylab', 'skimage.morphology', 'pybob', 'sklearn'
                         'scipy.ndimage.filters', 'matplotlib.backends', 'matplotlib.backends.backend_pdf',
                         'pybob.coreg_tools', 'pybob.GeoImg', 'pybob.image_tools', 'pybob.plot_tools',
-                        'mpl_toolkits', 'mpl_toolkits.axes_grid1', 'netCDF4',
+                        'mpl_toolkits', 'mpl_toolkits.axes_grid1', 'netCDF4', 'osr',
                         'sklearn.linear_model', 'sklearn.gaussian_process', 'numba', 'skimage.io',
                         'scipy.ndimage.morphology', 'sklearn.gaussian_process.kernels', 'ogr', 'numpy.polynomial',
                         'scipy.ndimage', 'pybob.bob_tools', 'lxml.builder']
