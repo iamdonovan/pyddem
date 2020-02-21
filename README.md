@@ -1,3 +1,3 @@
-# MMASTER-workflows
+# pyddem
 
-This repository hosts the workflows for the MMASTER procesing methods of ASTER-L1A stereo imagery. The method itself is documented in [Girod et al, 2017, http://dx.doi.org/10.3390/rs9070704 ]
+This repository hosts the workflows for creating stacks of DEMs, processing time series of DEMs, and extracting relevant glaciological parameters such as volume changes.

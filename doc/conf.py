@@ -50,7 +50,7 @@ def setup(app):
 
 # -- Project information -----------------------------------------------------
 
-project = 'pymmaster'
+project = 'pyddem'
 copyright = '2019, Luc Girod, Robert McNabb, Chris Nuth, Romain Hugonnet'
 author = 'Luc Girod, Robert McNabb, Chris Nuth, Romain Hugonnet'
 
@@ -136,7 +136,7 @@ html_static_path = ['_static']
 # -- Options for HTMLHelp output ---------------------------------------------
 
 # Output file base name for HTML help builder.
-htmlhelp_basename = 'pymmasterdoc'
+htmlhelp_basename = 'pyddemdoc'
 
 
 # -- Options for LaTeX output ------------------------------------------------
@@ -163,7 +163,7 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-    (master_doc, 'pymmaster.tex', 'pymmaster Documentation',
+    (master_doc, 'pyddem.tex', 'pyddem Documentation',
      'Luc Girod, Robert McNabb, Chris Nuth', 'manual'),
 ]
 
@@ -173,7 +173,7 @@ latex_documents = [
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    (master_doc, 'pymmaster', 'pymmaster Documentation',
+    (master_doc, 'pyddem', 'pyddem Documentation',
      [author], 1)
 ]
 
@@ -184,8 +184,8 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-    (master_doc, 'pymmaster', 'pymmaster Documentation',
-     author, 'pymmaster', 'One line description of project.',
+    (master_doc, 'pyddem', 'pyddem Documentation',
+     author, 'pyddem', 'One line description of project.',
      'Miscellaneous'),
 ]
 

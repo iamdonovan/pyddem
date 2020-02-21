@@ -1,5 +1,5 @@
-fit_tools
+stack_tools
 =================================
 
-.. automodule:: pymmaster.fit_tools
+.. automodule:: pyddem.stack_tools
     :members:

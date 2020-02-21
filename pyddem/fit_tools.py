@@ -32,8 +32,8 @@ from pybob.GeoImg import GeoImg
 from pybob.coreg_tools import get_slope
 from pybob.image_tools import create_mask_from_shapefile
 from pybob.plot_tools import set_pretty_fonts
-# from pymmaster.stack_tools import create_crs_variable, create_nc
-import pymmaster.stack_tools as st
+# from pyddem.stack_tools import create_crs_variable, create_nc
+import pyddem.stack_tools as st
 from pybob.ddem_tools import nmad
 from warnings import filterwarnings
 

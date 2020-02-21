@@ -1,2 +1,0 @@
-RunMicMacAster_batch.sh
-=======================

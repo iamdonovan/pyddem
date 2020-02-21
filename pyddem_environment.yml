@@ -1,4 +1,4 @@
-name: mmaster_environment
+name: pyddem_environment
 channels:
   - conda-forge
   - defaults

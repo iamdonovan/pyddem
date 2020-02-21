@@ -6,7 +6,7 @@ import gdalconst
 import os
 import sys
 import numpy as np
-import pymmaster.fit_tools as ft
+import pyddem.fit_tools as ft
 import math as m
 import pandas as pd
 from datetime import datetime

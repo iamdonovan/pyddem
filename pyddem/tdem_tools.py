@@ -1,5 +1,5 @@
 """
-pymmaster.tdem_tools provides tools to post-process DEM stacks (volume integration, etc...)
+pyddem.tdem_tools provides tools to post-process DEM stacks (volume integration, etc...)
 """
 from __future__ import print_function
 import xarray as xr
@@ -14,8 +14,8 @@ import gdal
 # import osr
 # import gdalconst
 # from scipy.interpolate import interp1d
-# import pymmaster.fit_tools as ft
-import pymmaster.stack_tools as st
+# import pyddem.fit_tools as ft
+import pyddem.stack_tools as st
 import pymmaster.other_tools as ot
 # import pybob.ddem_tools as dt
 from pybob.coreg_tools import get_slope

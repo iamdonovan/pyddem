@@ -1,7 +1,7 @@
 python
 ====================================
 
-pymmaster python modules and shell scripts
+pyddem python modules and shell scripts
 
 .. toctree::
    :maxdepth: 2
