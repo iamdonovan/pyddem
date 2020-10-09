@@ -25,7 +25,6 @@ from scipy import stats
 from scipy.interpolate import interp1d
 from scipy.ndimage import filters
 from skimage.morphology import disk
-from sklearn.metrics.pairwise import linear_kernel
 from sklearn.linear_model import LinearRegression
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, ConstantKernel as C, RationalQuadratic as RQ, ExpSineSquared as ESS, PairwiseKernel
@@ -36,10 +35,9 @@ from pybob.coreg_tools import get_slope
 from pybob.image_tools import create_mask_from_shapefile
 from pybob.plot_tools import set_pretty_fonts
 from pybob.bob_tools import mkdir_p
-# from pymmaster.stack_tools import create_crs_variable, create_nc
 import pyddem.stack_tools as st
 import pyddem.tdem_tools as tt
-import pyddem.other_tools as ot
+import pyddem.vector_tools as vt
 from pybob.ddem_tools import nmad
 from warnings import filterwarnings
 
@@ -105,6 +103,78 @@ def write_animation(fig, ims, outfilename='output.gif', ani_writer='imagemagick'
     ani = animation.ArtistAnimation(fig, ims, **kwargs)
     ani.save(outfilename, writer=ani_writer)
 
+def get_dem_date(ds,ds_filt,t,outname):
+
+    tmp_img = st.make_geoimg(ds)
+
+    dc = ds.interp(time=[t])
+
+    h = dc.variables['z'].values[0]
+    err = dc.variables['z_ci'].values[0]
+
+    dates=[t]
+    t_vals = list(ds_filt.time.values)
+    dates_rm_dupli = sorted(list(set(t_vals)))
+    ind_firstdate = []
+    for i, date in enumerate(dates_rm_dupli):
+        ind_firstdate.append(t_vals.index(date))
+    ds_filt2 = ds_filt.isel(time=np.array(ind_firstdate))
+    for i in range(len(dates_rm_dupli)):
+        t_ind = (t_vals == dates_rm_dupli[i])
+        if len(t_ind) > 1:
+            ds_filt2.z.values[i, :] = np.any(ds_filt.z[t_vals == dates_rm_dupli[i], :].values.astype(bool), axis=0)
+    y0 = np.datetime64('2000-01-01')
+    ftime = ds_filt2.time.values
+    ftime_delta = np.array([t - y0 for t in ftime])
+    days = [td.astype('timedelta64[D]').astype(int) for td in ftime_delta]
+
+    # reindex to get closest not-NaN time value of the date vector
+    filt_arr = np.array(ds_filt2.z.values, dtype='float32')
+    filt_arr[filt_arr == 0] = np.nan
+    days = np.array(days)
+    filt_arr = filt_arr * days[:, None, None]
+    at_least_2 = np.count_nonzero(~np.isnan(filt_arr), axis=0) >= 2
+    filt_tmp = filt_arr[:, at_least_2]
+    out_arr = np.copy(filt_tmp)
+    for i in range(np.shape(filt_tmp)[1]):
+        ind = ~np.isnan(filt_tmp[:, i])
+        fn = interp1d(days[ind], filt_tmp[:, i][ind], kind='nearest', fill_value='extrapolate', assume_sorted=True)
+        out_arr[:, i] = fn(days)
+    filt_arr[:, at_least_2] = out_arr
+    ds_filt2.z.values = filt_arr
+    ds_filt_sub = ds_filt2.reindex(time=dates, method='nearest')
+
+    for i in range(len(dates)):
+        date = dates[i]
+        day_diff = (date - y0).astype('timedelta64[D]').astype(int)
+        ds_filt_sub.z.values[i, :] = np.abs(ds_filt_sub.z.values[i, :] - np.ones(ds_filt_sub.z.shape[1:3]) * day_diff)
+
+    dt = ds_filt_sub.z.values[0]
+
+    tmp_img.img = h
+    tmp_img.write(os.path.join(os.path.dirname(outname), os.path.basename(outname) + '_AST_SRTM_h.tif'))
+    tmp_img.img = err
+    tmp_img.write(os.path.join(os.path.dirname(outname), os.path.basename(outname) + '_AST_SRTM_herr.tif'))
+    tmp_img.img = dt
+    tmp_img.write(os.path.join(os.path.dirname(outname), os.path.basename(outname) + '_AST_SRTM_dt.tif'))
+
+def get_dem_date_exact(ds,t,outname):
+
+    tmp_img = st.make_geoimg(ds)
+
+    times = sorted(list(set(list(ds.time.values))))
+    df_time = pd.DataFrame()
+    df_time = df_time.assign(time=times)
+    df_time.index = pd.DatetimeIndex(pd.to_datetime(times))
+    t_exact = df_time.iloc[df_time.index.get_loc(pd.to_datetime(t), method='nearest')][0]
+
+    dc = ds.sel(time=[t_exact])
+
+    h = dc.variables['z'].values[0]
+
+    tmp_img.img = h
+    tmp_img.write(os.path.join(os.path.dirname(outname), os.path.basename(outname) + '_ASTER_recons_h.tif'))
+
 def get_full_dh(ds,t0,t1,outname):
 
     tmp_img = st.make_geoimg(ds)
@@ -113,18 +183,26 @@ def get_full_dh(ds,t0,t1,outname):
 
     dh = dc.variables['z'].values[-1] - dc.variables['z'].values[0]
     err = np.sqrt(dc.variables['z_ci'].values[-1] ** 2 + dc.variables['z_ci'].values[0] ** 2)
+
+    ind = err > 500.
+    dh[ind] = np.nan
+    # err_mid = dc.variables['z_ci'].values[int(dc.z.shape[0]/2)]
+    err_mid = np.nanmean(dc.variables['z_ci'].values,axis=0)
+
     # slope = ds.slope.values
 
     tmp_img.img = dh
     tmp_img.write(os.path.join(os.path.dirname(outname),os.path.basename(outname)+'_dh.tif'))
     tmp_img.img = err
     tmp_img.write(os.path.join(os.path.dirname(outname),os.path.basename(outname)+'_err.tif'))
+    # tmp_img.img = err_mid
+    # tmp_img.write(os.path.join(os.path.dirname(outname),os.path.basename(outname)+'_errmid.tif'))
     # tmp_img.img = slope
     # tmp_img.write(os.path.join(os.path.dirname(outname),os.path.basename(outname)+'_slope.tif'))
 
-def reproj_build_vrt(list_dh,utm,out_vrt):
+def reproj_build_vrt(list_dh,utm,out_vrt,res):
 
-    epsg = ot.epsg_from_utm(utm)
+    epsg = vt.epsg_from_utm(utm)
 
     list_fn_out = []
     for dh in list_dh:
@@ -132,14 +210,14 @@ def reproj_build_vrt(list_dh,utm,out_vrt):
         tile_name = os.path.basename(dh).split('_')[0]
         print(tile_name)
         img = GeoImg(dh)
-        dest = gdal.Warp('', img.gd, format='MEM', dstSRS='EPSG:{}'.format(epsg), resampleAlg=gdal.GRA_NearestNeighbour)
+        dest = gdal.Warp('', img.gd, format='MEM', dstSRS='EPSG:{}'.format(epsg), resampleAlg=gdal.GRA_NearestNeighbour,xRes=res,yRes=res)
 
         try:
             out_img = GeoImg(dest)
         except:
             print('Could not reproject in that projection.')
             continue
-        nodata_mask = ot.latlontile_nodatamask(out_img,tile_name)
+        nodata_mask = vt.latlontile_nodatamask(out_img,tile_name)
         out_img.img[~nodata_mask]=np.nan
 
         fn_out = os.path.join(os.path.dirname(dh),os.path.splitext(os.path.basename(dh))[0]+'_'+str(epsg)+'.tif')
@@ -879,7 +957,7 @@ def gpr(data, t_vals, uncert, t_pred, opt=False, kernel=None, not_stable=True, d
             k2 = C(30) * ESS(length_scale=1, periodicity=1)  # periodic kernel
             # k3 =  #local kernel
             # k3 = C(50) * RBF(1)
-            k3 = C(base_var*0.6) * RBF(0.75) + C(base_var*0.3) + RBF(1.5) + C(base_var*0.1)*RBF(3)
+            k3 = C(base_var*0.6) * RBF(0.75) + C(base_var*0.3)* RBF(1.5) + C(base_var*0.1)*RBF(3)
             k4 = PairwiseKernel(1, metric='linear') * C(nonlin_var) * RQ(period_nonlinear,10)
             kern = k1 + k2
             if not_stable:
@@ -1327,7 +1405,7 @@ def spat_filter_ref(ds_arr, ref_dem, cutoff_kern_size=500, cutoff_thr=20.,nproc=
     # minimum/maximum elevation in circular surroundings based on reference DEM
 
     ref_arr = ref_dem.img
-    res = ref_dem.dx
+    res = 100.
     rad = int(np.floor(cutoff_kern_size / res))
 
     if nproc == 1:
@@ -1525,7 +1603,7 @@ def robust_wls_ref_filter_stack(ds, ds_arr,err_arr,t_vals,fn_ref_dem,ref_dem_dat
     tmp_dem = GeoImg(fn_ref_dem)
     ref_dem = tmp_dem.reproject(tmp_geo)
     ref_arr = ref_dem.img
-    res = ref_dem.dx
+    res = 100.
     rad = int(np.floor(cutoff_kern_size / res))
 
     #wls
@@ -1720,6 +1798,9 @@ def fit_stack(fn_stack, fit_extent=None, fn_ref_dem=None, ref_dem_date=None, fil
 
     ds_arr = ds.z.values
     ds_corr = ds.corr.values
+    #change correlation for SETSM segments
+    ind_setsm = np.array(['SETSM' in name for name in ds.dem_names.values])
+    ds_corr[ind_setsm,:] = 60.
     t_vals = ds.time.values
     uncert = ds.uncert.values
     filt_vals = (t_vals - np.datetime64('2000-01-01')).astype('timedelta64[D]').astype(int)
@@ -1775,6 +1856,8 @@ def fit_stack(fn_stack, fit_extent=None, fn_ref_dem=None, ref_dem_date=None, fil
     total_delta = np.datetime64('{}-01-01'.format(int(y1))) - np.datetime64('{}-01-01'.format(int(y0)))
     ftime_delta = np.array([t - np.datetime64('{}-01-01'.format(int(y0))) for t in ftime])
     time_vals = (ftime_delta / total_delta) * (int(y1) - int(y0))
+
+    print(time_vals)
 
     print('Fitting with method: ' + method)
 
