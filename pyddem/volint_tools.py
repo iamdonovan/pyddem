@@ -1,5 +1,5 @@
 """
-pymmaster.volint_tools provides tools to integrate elevation change into volume following McNabb et al., 2019
+pymmaster.volint_tools provides tools to integrate elevation change into volume time series, adapted from McNabb et al. (2019)
 """
 from __future__ import print_function
 import sys
