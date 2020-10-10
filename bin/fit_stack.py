@@ -1,7 +1,7 @@
 from __future__ import print_function
 import argparse
 import numpy as np
-from pymmaster.fit_tools import fit_stack
+from pyddem.fit_tools import fit_stack
 
 def _argparser():
     parser = argparse.ArgumentParser(description="Fit time series of elevation data using Gaussian Process.")
