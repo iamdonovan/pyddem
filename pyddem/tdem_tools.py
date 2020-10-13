@@ -1,7 +1,6 @@
 """
 pymmaster.tdem_tools provides tools to post-process DEM stacks: volume integration over specific outlines, comparison to point data, spatial aggregation...
 """
-from __future__ import print_function
 import xarray as xr
 import os
 import sys
