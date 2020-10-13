@@ -1,6 +1,7 @@
 """
 pymmaster.tdem_tools provides tools to post-process DEM stacks: volume integration over specific outlines, comparison to point data, spatial aggregation...
 """
+from __future__ import print_function
 import xarray as xr
 import os
 import sys
@@ -1323,7 +1324,7 @@ def aggregate_all_to_multiannual(df,mult_ann=1,fn_tarea=None,frac_area=None):
 
         linear_area = (tarea[i] + tarea[i + 1]) / 2
         dhdt = dvol / linear_area / mult_ann
-        perc_err_linear_area = 3. / 100
+        perc_err_linear_area = 1. / 100
         err_dhdt = np.sqrt((err_dvol / linear_area) ** 2 \
                            + (perc_err_linear_area * linear_area * dvol / linear_area ** 2) ** 2) / mult_ann
 
