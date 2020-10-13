@@ -1,7 +1,6 @@
 """
 pyddem.fit_tools provides tools to derive filter and interpolate DEM stacks into elevation time series
 """
-from __future__ import print_function
 import os
 import sys
 import time
