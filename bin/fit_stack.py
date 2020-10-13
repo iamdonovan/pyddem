@@ -1,11 +1,10 @@
 from __future__ import print_function
 import argparse
 import numpy as np
-from pymmaster.fit_tools import fit_stack
-
+from pyddem.fit_tools import fit_stack
 
 def _argparser():
-    parser = argparse.ArgumentParser(description="Fit timeseries of elevation data using Gaussian Process.")
+    parser = argparse.ArgumentParser(description="Fit time series of elevation data using Gaussian Process.")
     # things to add: input directory, master dem and/or elevation data
     # optional: output directory, number of processors, land mask, glacier mask, number of jitter iterations?
     # tolerance for fit?

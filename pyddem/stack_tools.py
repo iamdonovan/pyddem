@@ -1,5 +1,5 @@
 """
-pyddem.stack_tools provides tools to create stacks of DEM data, usually MMASTER DEMs.
+pymmaster.stack_tools provides tools to create stacks of DEM data, usually MMASTER DEMs.
 """
 from __future__ import print_function
 import os, sys
@@ -29,10 +29,9 @@ from skimage.morphology import disk
 from scipy.ndimage.morphology import binary_opening, binary_dilation
 from pybob.GeoImg import GeoImg
 import pymmaster.mmaster_tools as mt
-import pyddem.other_tools as ot
+import pyddem.vector_tools as vt
 from pybob.coreg_tools import dem_coregistration
 from pybob.bob_tools import mkdir_p
-
 
 def read_stats(fdir):
 
@@ -91,17 +90,17 @@ def get_footprints_inters_ext(filelist, extent_base, epsg_base, use_l1a_met=Fals
     list_poly = []
     for f in filelist:
         if use_l1a_met:
-            poly=ot.l1astrip_polygon(os.path.dirname(f))
-            trans=ot.coord_trans(False,4326,False,epsg_base)
+            poly=vt.l1astrip_polygon(os.path.dirname(f))
+            trans=vt.coord_trans(False,4326,False,epsg_base)
             poly.Transform(trans)
         else:
-            ext, proj = ot.extent_rast(f)
-            poly = ot.poly_from_extent(ext)
-            trans= ot.coord_trans(True,proj,False,epsg_base)
+            ext, proj = vt.extent_rast(f)
+            poly = vt.poly_from_extent(ext)
+            trans= vt.coord_trans(True,proj,False,epsg_base)
             poly.Transform(trans)
         list_poly.append(poly)
 
-    poly_ext = ot.poly_from_extent(extent_base)
+    poly_ext = vt.poly_from_extent(extent_base)
 
     filelist_out = []
     for poly in list_poly:
@@ -296,11 +295,11 @@ def tilename_stack(ds):
 
     #no checks, we assume it's a latlon tile and just get the tile center coordinates
     extent, proj = extent_stack(ds)
-    poly = ot.poly_from_extent(extent)
-    trans = ot.coord_trans(True, proj, False, 4326)
+    poly = vt.poly_from_extent(extent)
+    trans = vt.coord_trans(True, proj, False, 4326)
     poly.Transform(trans)
-    centroid = ot.get_poly_centroid(poly)
-    tile_name = ot.latlon_to_SRTMGL1_naming(centroid[1], centroid[0])
+    centroid = vt.get_poly_centroid(poly)
+    tile_name = vt.latlon_to_SRTMGL1_naming(centroid[1], centroid[0])
 
     return tile_name
 
@@ -348,7 +347,7 @@ def merge_stacks(list_ds,nice_latlon_tiling=False):
         for ds in list_ds:
             tile_name = tilename_stack(ds)
             tmp_img = make_geoimg(ds)
-            mask = ot.latlontile_nodatamask(tmp_img,tile_name)
+            mask = vt.latlontile_nodatamask(tmp_img,tile_name)
 
             ds.variables['z'].values[:,~mask]=np.nan
             ds.variables['z_ci'].values[:,~mask]=np.nan
@@ -383,7 +382,7 @@ def wrapper_reproj(argsin):
 
     #output
     res, outputBounds, utm_out = out_met
-    dest = gdal.Warp('', tmp_z.gd, format='MEM', dstSRS='EPSG:{}'.format(ot.epsg_from_utm(utm_out)),
+    dest = gdal.Warp('', tmp_z.gd, format='MEM', dstSRS='EPSG:{}'.format(vt.epsg_from_utm(utm_out)),
                      xRes=res, yRes=res, outputBounds=outputBounds,
                      resampleAlg=gdal.GRA_Bilinear)
     geoimg = GeoImg(dest)
@@ -399,11 +398,11 @@ def reproj_stack(ds,utm_out,nice_latlon_tiling=False,write_ds=None,nproc=1):
 
     if nice_latlon_tiling:
         tile_name = tilename_stack(ds)
-        outputBounds = ot.niceextent_utm_latlontile(tile_name,utm_out,res)
+        outputBounds = vt.niceextent_utm_latlontile(tile_name,utm_out,res)
     else:
         outputBounds = None
 
-    dest = gdal.Warp('', tmp_img.gd, format='MEM', dstSRS='EPSG:{}'.format(ot.epsg_from_utm(utm_out)),
+    dest = gdal.Warp('', tmp_img.gd, format='MEM', dstSRS='EPSG:{}'.format(vt.epsg_from_utm(utm_out)),
                  xRes=res, yRes=res, outputBounds=outputBounds,
                  resampleAlg=gdal.GRA_Bilinear)
     first_img = GeoImg(dest)
@@ -442,7 +441,7 @@ def reproj_stack(ds,utm_out,nice_latlon_tiling=False,write_ds=None,nproc=1):
         new_z_ci = np.stack(outputs_z_ci,axis=0)
 
     if nice_latlon_tiling:
-        mask = ot.latlontile_nodatamask(first_img, tile_name)
+        mask = vt.latlontile_nodatamask(first_img, tile_name)
         new_z[:,~mask]=np.nan
         new_z_ci[:,~mask]=np.nan
 
@@ -453,7 +452,7 @@ def reproj_stack(ds,utm_out,nice_latlon_tiling=False,write_ds=None,nproc=1):
     ds_out.z.attrs = ds.z.attrs
     ds_out.z_ci.attrs = ds.z_ci.attrs
 
-    ds_out.crs.attrs = create_crs_variable(epsg=ot.epsg_from_utm(utm_out))
+    ds_out.crs.attrs = create_crs_variable(epsg=vt.epsg_from_utm(utm_out))
 
     if write_ds is not None:
         ds_out.to_netcdf(write_ds)
@@ -637,7 +636,7 @@ def create_mmaster_stack(filelist, extent=None, res=None, epsg=None, outfile='mm
 
     # 3 overlapping pixels on each side of the tile in case reprojection is necessary; will be removed when merging
     if latlontile_nodata is not None and epsg is not None:
-        mask = binary_dilation(ot.latlontile_nodatamask(first_img, latlontile_nodata),iterations=3)
+        mask = binary_dilation(vt.latlontile_nodatamask(first_img, latlontile_nodata),iterations=3)
 
     if uncert:
         uo = nco.createVariable('uncert', 'f4', ('time',))
@@ -785,15 +784,21 @@ def create_mmaster_stack(filelist, extent=None, res=None, epsg=None, outfile='mm
             # zo[outind, :, :] = img.img
 
             if uncert:
-                stats = read_stats(os.path.dirname(filelist[ind]))
+                try:
+                    stats = read_stats(os.path.dirname(filelist[ind]))
+                except:
+                    stats = None
                 # uo[outind] = stats['RMSE']
         # to[outind] = datelist[ind].toordinal() - dt.date(y0, 1, 1).toordinal()
         # go[outind] = os.path.basename(filelist[ind]).rsplit('.tif', 1)[0]
-        try:
-            list_uncert.append(stats['RMSE'])
-        except KeyError:
-            print('KeyError for RMSE here:'+filelist[ind])
-            continue
+        if stats is None:
+            list_uncert.append(5.)
+        else:
+            try:
+                list_uncert.append(stats['RMSE'])
+            except KeyError:
+                print('KeyError for RMSE here:'+filelist[ind])
+                continue
         list_img.append(img.img)
         list_corr.append(corr.img.astype(np.int8))
         list_dt.append(datelist[ind].toordinal() - dt.date(y0, 1, 1).toordinal())

@@ -1,7 +1,7 @@
 #! /usr/bin/env python
 from __future__ import print_function
 import argparse
-from pymmaster.stack_tools import create_mmaster_stack
+from pyddem.stack_tools import create_mmaster_stack
 
 
 def _argparser():
