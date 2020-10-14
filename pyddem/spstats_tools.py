@@ -1,5 +1,5 @@
 """
-pyddem.spstats_tools provides tools to derive spatial/temporal statistics for elevation change data.
+pyddem.spstats_tools provides tools to derive spatial statistics for elevation change data.
 """
 from __future__ import print_function
 import os
@@ -35,6 +35,14 @@ def neff_sphsum_circular(area,crange1,psill1,crange2,psill2):
     return (psill1 + psill2)/std_err**2
 
 def neff_circ(area,list_vgm):
+    """
+    Effective number of samples numerically integrated for a sum of variogram functions over an area: circular approximation of Rolstad et al. (2009)
+
+    :param area: Area
+    :param list_vgm: List of variogram function to sum
+
+    :returns: Number of effective samples
+    """
 
     psill_tot = 0
     for vario in list_vgm:
@@ -57,6 +65,20 @@ def neff_circ(area,list_vgm):
 
 
 def neff_rect(area,width,crange1,psill1,model1='Sph',crange2=None,psill2=None,model2=None):
+    """
+    Effective number of samples numerically integrated for a sum of 2 variogram functions over a rectangular area: rectangular approximation of Hugonnet et al. (TBD)
+
+    :param area: Area
+    :param width: Width of rectangular area
+    :param crange1: Correlation range of first variogram
+    :param psill1: Partial sill of first variogram
+    :param model1: Model of first variogram
+    :param crange2: Correlation range of second variogram
+    :param psill2: Partial sill of second variogram
+    :param model2: Model of second variogram
+
+    :returns: Number of effective samples
+    """
 
     def hcov_sum(h,crange1=crange1,psill1=psill1,model1=model1,crange2=crange2,psill2=psill2,model2=model2):
 
@@ -89,10 +111,36 @@ def integrate_fun(fun,low_limit,up_limit):
     return integrate.quad(fun,low_limit,up_limit)
 
 def cov(h,crange,model='Sph',psill=1.,kappa=1/2,nugget=0):
+    """
+    Compute covariance based on variogram function
+
+    :param h: Spatial lag
+    :param crange: Correlation range
+    :param model: Model
+    :param psill: Partial sill
+    :param kappa: Smoothing parameter for Exp Class
+    :param nugget: Nugget
+
+    :returns: Variogram function
+    """
+
 
     return (nugget + psill) - vgm(h,crange,model=model,psill=psill,kappa=kappa)
 
 def vgm(h,crange,model='Sph',psill=1.,kappa=1/2,nugget=0):
+    """
+    Compute variogram model function (Spherical, Exponential, Gaussian or Exponential Class)
+
+    :param h: Spatial lag
+    :param crange: Correlation range
+    :param model: Model
+    :param psill: Partial sill
+    :param kappa: Smoothing parameter for Exp Class
+    :param nugget: Nugget
+
+    :returns: Variogram function
+    """
+
 
     c0 = nugget #nugget
     c1 = psill #partial sill
@@ -162,6 +210,19 @@ def part_covar_sum(argsin):
     return part_var_err
 
 def double_sum_covar(list_tuple_errs, corr_ranges, list_area_tot, list_lat, list_lon,nproc=1):
+
+    """
+    Double sum of covariances for propagating multi-range correlated errors for disconnected spatial ensembles
+
+    :param list_tuple_errs: List of tuples of correlated errors by range, by ensemble
+    :param corr_ranges: List of correlation ranges
+    :param list_area_tot: List of areas of ensembles
+    :param list_lat: Center latitude of ensembles
+    :param list_lon: Center longitude of ensembles
+    :param nproc: Number of cores to use for multiprocessing [1]
+
+    :returns:
+    """
 
     n = len(list_tuple_errs)
 
@@ -238,6 +299,18 @@ def get_spatial_corr(argsin):
     return exps, bins, counts
 
 def get_tinterpcorr(df,outfile,cutoffs=[10000,100000,1000000],nlags=100,nproc=1,nmax=10000):
+    """
+    Sample empirical spatial variograms with time lags to observation
+
+    :param df: DataFrame of differences between ICESat and GP data aggregated for all regions
+    :param outfile: Filename of csv for outputs
+    :param cutoffs: Maximum successive ranges for sampling variogram
+    :param nlags: Number of lags to sample up to cutoff
+    :param nproc: Number of cores to use for multiprocessing [1]
+    :param nmax: Maximum number of  observations to use for pairwise sampling (drawn randomly)
+
+    :returns:
+    """
 
     #df is a subset dataframe for points of interest, standardized
     #with an attribute .reg for regions, that must be close enough for UTM zones coordinates to be relevant?
@@ -334,6 +407,14 @@ def get_tinterpcorr(df,outfile,cutoffs=[10000,100000,1000000],nlags=100,nproc=1,
 
 
 def aggregate_tinterpcorr(infile,cutoffs=[10000,100000,1000000]):
+    """
+    Weighted aggregation of empirical spatial variograms between different regions, with varying time lags and sampling ranges, accounting for the number of pairwise samples drawn
+
+    :param infile: Filename of sampled variograms
+    :param cutoffs: Maximum successive ranges for sampling variogram
+
+    :returns:
+    """
 
     # infile = '/home/atom/ongoing/work_worldwide/validation/tinterp_corr.csv'
     # outfile_reg = '/home/atom/ongoing/work_worldwide/validation/agg_reg_tinterp_corr.csv'

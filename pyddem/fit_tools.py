@@ -47,6 +47,23 @@ filterwarnings('ignore')
 
 def make_dh_animation(ds, month_a_year=None, figsize=(8,10), t0=None, t1=None, dh_max=20, var='z', cmap='RdYlBu', xlbl='easting (km)',
                       ylbl='northing (km)'):
+    """
+       Generate a GIF from elevation time series
+
+       :param ds: xarray Dataset of elevation time series
+       :param month_a_year: Numerical month to keep only one month per year in the animation
+       :param figsize: Tuple of figure size
+       :param t0: Starting date
+       :param t1: End date
+       :param dh_max: Max scale for colorbar
+       :param var: Variable to display in the dataset
+       :param cmap: Colormap
+       :param xlbl: xlabel for animation
+       :param ylbl: ylabel for animation
+
+       :returns: Figure, List of images and annotations for animation
+       """
+
     set_pretty_fonts()
     fig = plt.figure(figsize=figsize)
     ax = fig.gca()
@@ -106,6 +123,16 @@ def write_animation(fig, ims, outfilename='output.gif', ani_writer='imagemagick'
     ani.save(outfilename, writer=ani_writer)
 
 def get_dem_date(ds,ds_filt,t,outname):
+    """
+       Extract a DEM from an elevation time series, with elevation error and time lag to the closest observation
+
+       :param ds: xarray Dataset of elevation time series
+       :param ds_filt: xarray dataset of boolean data cube of valid observation used to generate the time series
+       ;param t: Date of extraction
+       :outname: Filename for output rasters
+
+       :returns:
+       """
 
     tmp_img = st.make_geoimg(ds)
 
@@ -252,6 +279,14 @@ def get_stack_mask(maskshp, ds):
 
 def vgm_1d(argsin):
 
+    """
+    1D variogram sampling
+
+    :param argsin: tuple of x values, y values, lag cutoff value and interval of x sampling (for easier parallel proc)
+
+    :returns: semivariance
+    """
+
     t_vals, detrend_elev, lag_cutoff, tstep = argsin
     # 1D variogram: inspired by http://connor-johnson.com/2014/03/20/simple-kriging-in-python/
 
@@ -308,6 +343,13 @@ def wrapper_vgm1d(argsin):
     return vdata, pdata
 
 def vgm_1d_med(argsin):
+    """
+    1D median variogram sampling
+
+    :param argsin: tuple of x values, y values, lag cutoff value and interval of x sampling (for easier parallel proc)
+
+    :returns: semivariance
+    """
 
     t_vals, detrend_elev, lag_cutoff, tstep = argsin
     # 1D variogram: inspired by http://connor-johnson.com/2014/03/20/simple-kriging-in-python/
@@ -400,6 +442,23 @@ def wrapper_estimate_var(argsin):
     return nmd, ns, std
 
 def get_var_by_corr_slope_bins(ds,ds_arr,arr_slope,bins_slope,cube_corr,bins_corr,outfile,inc_mask=None,exc_mask=None,nproc=1):
+
+    """
+    Sampling method for elevation measurement error from stacks of DEMs: binning of external variables and sampling of variance
+
+    :param ds: xarray Dataset of data cube
+    :param ds_arr: Data cube of elevations
+    :param arr_slope: Slope raster
+    :param bins_slope: Bins to sample categories of slope
+    :param cube_corr: Data cube of stereo-correlations
+    :param bins_corr: Bins to sample categories of stereo-correlations
+    :param outfile: Filename for output files
+    :param inc_mask: Filename of inclusion shapefile for the sampling of variance
+    :param exc_mask: Filename of exclusion shapefile for the sampling of variance
+    :param nproc: Number of cores for multiprocessing [1]
+
+    :returns:
+    """
 
     ref_arr = ds.variables['ref_z'].values
 
@@ -511,6 +570,18 @@ def get_var_by_bin(ds,ds_arr,arr_vals,bin_vals,outfile,inc_mask=None,exc_mask=No
 
 def estimate_var(dh,mask_cube,arr_mask=None,cube_mask=None,nsamp=100000):
 
+    """
+    Estimation of elevation variance from data cube of difference to reference elevations
+
+    :param dh: Data cube of difference between stack of DEMs and reference DEM
+    :param mask_cube: Mask where sampling must occur
+    :param arr_mask: Add a raster mask (no time dimension)
+    :param cube_mask: Add a data cube mask
+    :param nsamp: Number of samples to draw
+
+    :returns: NMAD, number of samples, STD
+    """
+
     start = time.time()
 
     # rasterize mask
@@ -536,8 +607,23 @@ def estimate_var(dh,mask_cube,arr_mask=None,cube_mask=None,nsamp=100000):
 
     return nmad(sub_dh), final_nsamp, np.nanstd(sub_dh)
 
-def manual_refine_sampl_temporal_vgm(fn_stack,fn_ref_dem,out_dir,filt_ref='both',time_filt_thresh=[-50,10]
+def manual_refine_sampl_temporal_vgm(fn_stack,fn_ref_dem,out_dir,filt_ref='both',max_dhdt=[-50,50]
                                      ,ref_dem_date=np.datetime64('2015-01-01'),inc_mask=None,gla_mask=None,nproc=1):
+    """
+    Full sampling method of temporal variogram from stacks of DEMs: pre-filtering of data, binning of external variables and sampling of temporal variograms
+
+    :param fn_stack: Filename of netcdf stack of DEMs
+    :param fn_ref_dem: Filename of reference DEM
+    :param out_dir: Output directory
+    :param filt_ref: Filtering method
+    :param max_dhdt: Maximum positive/negative elevation change rate per year from reference elevations [-50 m,50 m]
+    :param ref_dem_date: Date of reference DEM
+    :param inc_mask: Filename of inclusion shapefile for the stack
+    :param gla_mask: Filename of inclusion shapefile for the sampling of variogram
+    :param nproc: Number of cores for multiprocessing [1]
+
+    :returns:
+    """
 
     # let's look at a few possible dependencies for this temporal vgm
     print('Working on '+fn_stack)
@@ -571,7 +657,7 @@ def manual_refine_sampl_temporal_vgm(fn_stack,fn_ref_dem,out_dir,filt_ref='both'
     if fn_ref_dem is not None:
         assert filt_ref in ['min_max', 'time', 'both'], "fn_ref must be one of: min_max, time, both"
         ds_arr_filt = prefilter_stack(ds, ds_arr, fn_ref_dem, t_vals, filt_ref=filt_ref, ref_dem_date=ref_dem_date,
-                                 time_filt_thresh=time_filt_thresh, nproc=nproc)
+                                 max_dhdt=max_dhdt, nproc=nproc)
         print('Elapsed time is ' + str(time.time() - start))
 
     fn_final = os.path.join(os.path.dirname(fn_stack),os.path.splitext(os.path.basename(fn_stack))[0]+'_final.nc')
@@ -621,6 +707,22 @@ def get_vgm_by_bin(ds,ds_arr,arr_vals,bin_vals,outfile,inc_mask=None,exc_mask=No
 
 
 def estimate_vgm(ds,ds_arr,inc_mask=None,exc_mask=None,rast_mask=None,nsamp=10000,tstep=0.25,lag_cutoff=None,min_obs=8,nproc=1,pack_size=50):
+    """
+    Aggregate 1D temporal variograms for multiple stack pixels: random sampling within a inclusion mask
+
+    :param ds: xarray Dataset of data cube
+    :param ds_arr: Data cube of elevations
+    :param inc_mask: Filename of inclusion shapefile
+    :param exc_mask: Filename of exclusion shapefile
+    :param rast_mask: Additional mask (boolean raster)
+    :param nsamp: Number of pixels sampled in time
+    :param tstep: Time interval for aggregating pairwise time lags
+    :param lag_cutoff: Maximum time lag to sample
+    :param min_obs: Minimum of valid observation per pixel for sampling
+    :param nproc: Number of cores for multiprocessing [1]
+
+    :returns: Lags, Variance, Variance dispersion
+    """
 
     # estimate 1D variogram for multiple pixels: random sampling within mask
 
@@ -736,6 +838,16 @@ def parse_epsg(wkt):
 
 
 def ols_matrix(X, Y, conf_interv=0.68, conf_slope=0.68):
+    """
+    Ordinary Least-Squares (matrix, for optimized processing time)
+
+    :param X: Data cube of x
+    :param Y: Data cube of y
+    :param conf_interv: Confidence interval for y output
+    :param conf_slope: Confidence interval for WLS slope output
+
+    :returns: Slope, Intercept, Slope CI, Y lower CB, Y upper CB
+    """
     # perform independent OLS matricially for optimal processing time
     # inspired from: https://en.wikipedia.org/wiki/Simple_linear_regression#Normality_assumption
     # and https://fr.wikipedia.org/wiki/M%C3%A9thode_des_moindres_carr%C3%A9s
@@ -784,7 +896,17 @@ def ols_matrix(X, Y, conf_interv=0.68, conf_slope=0.68):
 
 
 def wls_matrix(x, y, w, conf_interv=0.68, conf_slope=0.68):
-    # perform independent WLS matricially for optimal processing time
+    """
+    Weighted Least-Squares (matrix, for optimized processing time)
+
+    :param x: Data cube of x
+    :param y: Data cube of y
+    :param w: Data cube of weights
+    :param conf_interv: Confidence interval for y output
+    :param conf_slope: Confidence interval for WLS slope output
+
+    :returns: Slope, Intercept, Slope CI, Y lower CB, Y upper CB
+    """
 
     X = x * 1.0
     Y = y * 1.0
@@ -879,6 +1001,21 @@ def detrend(t_vals, data, ferr):
     return reg
 
 def gpr(data, t_vals, uncert, t_pred, opt=False, kernel=None, not_stable=True, detrend_ls=False, loop_detrend=False):
+    """
+    Gaussian Process regression wrapper
+
+    :param data: Data cube of elevations
+    :param t_vals: Time vector of data cube
+    :param uncert: Data cube of errors
+    :param t_pred: Time vector to predict
+    :param opt: Boolean, run kernel optimization
+    :param kernel: Provide kernel object
+    :param not_stable: Mask of unstable terrain (to apply different kernels)
+    :param detrend_ls: Boolean, remove linear trend before applying GP
+    :param loop_detrend: Boolean, remove linear trend at each iteration before applying GP
+
+    :returns: Data cube of fitted elevations, Data cube of propagated 1-sigma elevation errors, Data cube mask of valid data
+    """
 
     # if only 0 or 1 elevation values in the pixel, no fitting
     if np.count_nonzero(np.isfinite(data)) < 2:
@@ -1042,6 +1179,18 @@ def gpr(data, t_vals, uncert, t_pred, opt=False, kernel=None, not_stable=True, d
 
 
 def ls(subarr, t_vals, err, weigh, filt_ls=False, conf_filt=0.99):
+    """
+    Ordinary or Weighted Least-Squares wrapper
+
+    :param subarr: Data cube of elevations
+    :param t_vals: Time vector of data cube
+    :param err: Data cube of errors
+    :param weigh: Boolean, use weighted least-squares
+    :param filt_ls: Boolean, use a first CI filtering before fitting again
+    :param conf_filt: Confidence interval of the filtering fit
+
+    :returns: Raster concatenation (LS slope, LS intercept, slope 1-sigma error, number of samples, date of first sample, date of last sample), Data cube mask of valid data
+    """
 
     T, Y, X = subarr.shape
 
@@ -1159,6 +1308,8 @@ def ls_wrapper(argsin):
 
 
 def splitter(img, nblocks):
+    #manually split a datacube for parallel computing
+
     split1 = np.array_split(img, nblocks[0], axis=1)
     split2 = [np.array_split(im, nblocks[1], axis=2) for im in split1]
     olist = [np.copy(a) for a in list(chain.from_iterable(split2))]
@@ -1166,6 +1317,8 @@ def splitter(img, nblocks):
 
 
 def stitcher(outputs, nblocks):
+    #manually stitch a datacube for parallel computing
+
     stitched = []
     if np.array(nblocks).size == 1:
         nblocks = np.array([nblocks, nblocks])
@@ -1177,6 +1330,7 @@ def stitcher(outputs, nblocks):
     return np.concatenate(tuple(stitched), axis=1)
 
 def patchify(arr,nblocks,overlap):
+    #manually split with overlap a datacube for parallel computing
 
     overlap = int(np.floor(overlap))
     patches = []
@@ -1196,6 +1350,7 @@ def patchify(arr,nblocks,overlap):
     return patches, inv, split
 
 def unpatchify(arr_shape, subarr, inv, split):
+    #manually stitch account for split overlap a datacube for parallel computing
 
     out = np.zeros(arr_shape)
 
@@ -1208,6 +1363,22 @@ def unpatchify(arr_shape, subarr, inv, split):
     return out
 
 def cube_to_stack(ds, out_cube, y0, nice_fit_t, outfile, slope_arr=None, ci=True, clobber=False, filt_bool=False):
+    """
+    Write data cube to netcdf with new time axis, confidence interval, slope, etc...
+    #TODO: this could be simplified quite a bit...
+
+    :param ds: xarray Dataset of data cube
+    :param out_cube: Data cube of time series of elevations
+    :param y0: Origin of time vector
+    :param nice_fit_t: Time vector relative to the origin
+    :param outfile: Filename of output netcdf
+    :param slope_arr: Slope raster to write as concomitant DataArray
+    :param ci: Boolean to look for confidence interval in the out_cube
+    :param clobber: Boolean to replace output file
+    :param filt_bool: Boolean to force a boolean datacube as output (e.g., to the mask data cube of the multi-step filtering)
+
+    :return:
+    """
 
     fit_cube = out_cube[:len(nice_fit_t), :, :]
 
@@ -1290,30 +1461,57 @@ def arr_to_img(ds, out_arr, outfile):
     arr.img = out_arr[5, :, :]
     arr.write(outfile_dmax)
 
+#TODO: homogenize how REF DEM is provided: sometimes filename, sometimes raster, sometimes GeoImg... inadmissible :)
 
-def time_filter_ref(z_arr, ref_arr, t_vals, ref_date, dhdt_thresh=[-50,50], dh_thresh=100.):
+def time_filter_ref(ds_arr, ref_arr, t_vals, ref_date, max_dhdt=[-50,50], base_thresh=100.):
+    """
+    Temporal filtering of stacked DEMs with a reference DEM: removes all elevations outside a positive/negative linear elevation trend from the reference, with a base threshold
 
-    print('Adding base threshold of '+str(dh_thresh)+' m around reference values.')
+    :param ds_arr: Data cube of elevations
+    :param ref_arr: Raster of reference DEM
+    :param t_vals: Time vector of  data cube
+    :param ref_date: Date of reference DEM
+    :param max_dhdt: Maximum positive/negative elevation change rate per year from reference elevations [-50 m,50 m]
+    :param base_thresh: Base vertical threshold for the temporal filter (avoid elevations close to reference) [100 m]
+
+    :return: ds_arr: Filtered data cube
+    """
+
+    print('Adding base threshold of '+str(base_thresh)+' m around reference values.')
 
     delta_t = (ref_date - t_vals).astype('timedelta64[D]').astype(float) / 365.24
-    dh = ref_arr[None,:,:] - z_arr
+    dh = ref_arr[None,:,:] - ds_arr
     dt_arr = np.ones(dh.shape) * delta_t[:,None,None]
     # dh = ref_arr[:,:,None] - z_arr
     # dt_arr = np.ones(dh.shape) * delta_t[None,None,:]
-    if np.array(dhdt_thresh).size == 1:
-        z_arr[np.abs(dh) > dh_thresh + np.abs(dt_arr)*dhdt_thresh] = np.nan
+    if np.array(max_dhdt).size == 1:
+        ds_arr[np.abs(dh) > base_thresh + np.abs(dt_arr)*max_dhdt] = np.nan
     else:
-        z_arr[np.logical_or(np.logical_and(dt_arr < 0, np.logical_or(dh < - dh_thresh + dt_arr*dhdt_thresh[1], dh > dh_thresh + dt_arr*dhdt_thresh[0])),
-                             np.logical_and(dt_arr > 0, np.logical_or(dh > dh_thresh + dt_arr*dhdt_thresh[1], dh < - dh_thresh + dt_arr*dhdt_thresh[0])))] = np.nan
-    return z_arr
+        ds_arr[np.logical_or(np.logical_and(dt_arr < 0, np.logical_or(dh < - base_thresh + dt_arr*max_dhdt[1], dh > base_thresh + dt_arr*max_dhdt[0])),
+                             np.logical_and(dt_arr > 0, np.logical_or(dh > base_thresh + dt_arr*max_dhdt[1], dh < - base_thresh + dt_arr*max_dhdt[0])))] = np.nan
+    return ds_arr
 
-def dask_time_filter_ref(ds,z_arr,ref_dem,t_vals,ref_date,dhdt_thresh=[-50,50],dh_thresh=100.,nproc=1):
+def dask_time_filter_ref(ds,ds_arr,ref_dem,t_vals,ref_date,max_dhdt=[-50,50],base_thresh=100.,nproc=1):
+    """
+       Dask wrapper of temporal filtering of stacked DEMs with a reference DEM: removes all elevations outside a positive/negative linear elevation trend from the reference, with a base threshold
+
+       :param ds_arr: Data cube of elevations
+       :param ds_arr: Data cube of elevations
+       :param ref_dem: GeoImg of reference DEM
+       :param t_vals: Time vector of  data cube
+       :param ref_date: Date of reference DEM
+       :param max_dhdt: Maximum positive/negative elevation change rate per year from reference elevations [-50 m,50 m]
+       :param base_thresh: Base vertical threshold for the temporal filter (avoid elevations close to reference) [100 m]
+       :param nproc: Number of cores for multiprocessing [1]
+
+       :return: Filtered data cube
+       """
 
     start = time.time()
     print('Setting up time filtering parallelized...')
-    part_tf = functools.partial(time_filter_ref,t_vals=t_vals,ref_date=ref_date,dhdt_thresh=dhdt_thresh,dh_thresh=dh_thresh)
+    part_tf = functools.partial(time_filter_ref,t_vals=t_vals,ref_date=ref_date,max_dhdt=max_dhdt,base_thresh=base_thresh)
 
-    z_dask = xr.DataArray(z_arr,coords=[ds.time.values,ds.y.values,ds.x.values], dims=['time','y','x'])
+    z_dask = xr.DataArray(ds_arr,coords=[ds.time.values,ds.y.values,ds.x.values], dims=['time','y','x'])
     ref_arr = ref_dem.img
     ref_dask = xr.DataArray(ref_arr,coords=[ds.y.values,ds.x.values],dims=['y','x'])
 
@@ -1403,6 +1601,17 @@ def robust_maxmin_disk_filter(argsin):
 
 def spat_filter_ref(ds_arr, ref_dem, cutoff_kern_size=500, cutoff_thr=20.,nproc=1):
 
+    """
+    Spatial filtering of stacked DEMs with a reference DEM: removes all elevations smaller than the minimum or larger than the maximum reference elevation found within a circle of certain size, with a base threshold
+
+    :param ds_arr: Data cube of elevations
+    :param ref_dem: GeoImg of reference DEM
+    :param cutoff_kern_size: Radius size for kernel spatial filtering [500 m]
+    :param cutoff_thr: Base vertical threshold for the spatial filter (avoid elevations close to reference)
+
+    :return: ds_arr: Filtered data cube
+    """
+
     # here we assume that the reference DEM is a "clean" post-processed DEM, filtered with QA for low confidence outliers
     # minimum/maximum elevation in circular surroundings based on reference DEM
 
@@ -1440,6 +1649,12 @@ def nanmedian_slope(slope_cube):
     return np.nanmedian(slope_cube,axis=2)
 
 def isel_merge_dupl_dates(ds):
+    """
+    Merge duplicate dates of a xarray dataset by taking the mean of similar dates (e.g., overlapping same-date ASTER DEMs)
+
+    :param ds: xarray Dataset of datacube
+    :return: ds: merged Dataset
+    """
 
     #merge DEMs elevations (np.nanmean) for similar dates
     t_vals = ds.time.values
@@ -1468,6 +1683,13 @@ def isel_merge_dupl_dates(ds):
 
 def isel_maskout(ds,inc_mask):
 
+    """
+    Mask out values out of shapefile and minimize spatial extent, remove void time steps (to decrease computing time)
+
+    :param ds: xarray Dataset of datacube
+    :return: ds: reduced Dataset
+    """
+
     #simplify extent to mask, mask out remaining masked pixels in the extent as NaNs, remove unusued time indexes
     land_mask = get_stack_mask(inc_mask, ds)
     if np.count_nonzero(land_mask) > 0:
@@ -1485,6 +1707,22 @@ def isel_maskout(ds,inc_mask):
     return ds
 
 def constrain_var_slope_corr(ds,ds_arr,ds_corr,t_vals,uncert,fn_ref_dem=None,nproc=1):
+
+    """
+    Given a data cube of stacked DEMs, a data cube of stereo-correlations and a per-DEM vector of co-registration RMSE: estimate a median slope and compute a data cube of elevation errors
+    (error dependance on the slope and stereo-correlation is defined independently)
+    #TODO: allow for a user-defined function of error?
+
+    :param ds: xarray Dataset of datacube
+    :param ds_arr: Data cube of elevations
+    :param ds_corr: Data cube of stereo-correlations
+    :param t_vals: Time vector of data cube
+    :param uncert: Vector of co-registration RMSEs of the stacked DEMs
+    :param fn_ref_dem: Filename for input reference DEM
+    :param nproc: Number of cores for multiprocessing [1]
+
+    :return: Data cube of errors, Raster of median slope values
+    """
 
     print('>>Starting variance assessment...')
 
@@ -1547,7 +1785,22 @@ def constrain_var_slope_corr(ds,ds_arr,ds_corr,t_vals,uncert,fn_ref_dem=None,npr
     return err_arr, med_slope
 
 
-def prefilter_stack(ds,ds_arr,fn_ref_dem,t_vals,filt_ref='min_max',ref_dem_date=None,time_filt_thresh=[-50,50],nproc=1):
+def prefilter_stack(ds,ds_arr,fn_ref_dem,t_vals,filt_ref='min_max',ref_dem_date=None,max_dhdt=[-50,50],nproc=1):
+
+    """
+    Given a data cube of stacked DEMs and a reference DEM: condition a first-order spatial and temporal filtering of outliers
+
+    :param ds: xarray Dataset of datacube
+    :param ds_arr: Data cube of elevations
+    :param t_vals: Time vector of data cube
+    :param filt_ref: Method of filtering: spatial "min_max", temporal "time" or "both" ["min_max"]
+    :param fn_ref_dem: Filename for input reference DEM
+    :param ref_dem_date: Date of reference DEM
+    :param max_dhdt: Maximum positive/negative elevation change rate per year from reference elevations [-50 m,50 m]
+    :param nproc: Number of cores for multiprocessing [1]
+
+    :return: Filtered data cube
+    """
 
     print('>>Starting prefiltering...')
     start_prefilt = time.time()
@@ -1567,9 +1820,9 @@ def prefilter_stack(ds,ds_arr,fn_ref_dem,t_vals,filt_ref='min_max',ref_dem_date=
         if ref_dem_date is None:
             print('Reference DEM time stamp not specified, defaulting to 01.01.2000')
             ref_dem_date = np.datetime64('2000-01-01')
-        print('Filtering temporally with threshold of {} m/a'.format(time_filt_thresh))
+        print('Filtering temporally with threshold of {} m/a'.format(max_dhdt))
         # ds_arr =  dask_time_filter_ref(ds, ds_arr, ref_dem, t_vals, ref_dem_date, dhdt_thresh=time_filt_thresh, nproc=nproc)
-        ds_arr = time_filter_ref(ds_arr, ref_dem, t_vals, ref_dem_date, dhdt_thresh=time_filt_thresh)
+        ds_arr = time_filter_ref(ds_arr, ref_dem, t_vals, ref_dem_date, max_dhdt=max_dhdt)
     elif filt_ref == 'both':
         print('Filtering spatially using min/max values in {}'.format(fn_ref_dem))
         ds_arr = spat_filter_ref(ds_arr, ref_dem, cutoff_kern_size=200, cutoff_thr=700., nproc=nproc)
@@ -1581,9 +1834,9 @@ def prefilter_stack(ds,ds_arr,fn_ref_dem,t_vals,filt_ref='min_max',ref_dem_date=
         if ref_dem_date is None:
             print('Reference DEM time stamp not specified, defaulting to 01.01.2000')
             ref_dem_date = np.datetime64('2000-01-01')
-        print('Filtering temporally with threshold of {} m/a'.format(time_filt_thresh))
+        print('Filtering temporally with threshold of {} m/a'.format(max_dhdt))
         # ds_arr =  dask_time_filter_ref(ds, ds_arr, ref_dem, t_vals, ref_dem_date, dhdt_thresh=time_filt_thresh, nproc=nproc)
-        ds_arr = time_filter_ref(ds_arr, ref_dem.img, t_vals, ref_dem_date, dhdt_thresh=time_filt_thresh)
+        ds_arr = time_filter_ref(ds_arr, ref_dem.img, t_vals, ref_dem_date, max_dhdt=max_dhdt)
         print('Number of valid pixels after temporal filtering:' + str(np.count_nonzero(~np.isnan(ds_arr))))
 
         print('Elapsed time during prefiltering is ' + str(time.time() - start_prefilt))
@@ -1592,6 +1845,26 @@ def prefilter_stack(ds,ds_arr,fn_ref_dem,t_vals,filt_ref='min_max',ref_dem_date=
     return ds_arr
 
 def robust_wls_ref_filter_stack(ds, ds_arr,err_arr,t_vals,fn_ref_dem,ref_dem_date=np.datetime64('2013-01-01'),max_dhdt=[-50,50],nproc=1,cutoff_kern_size=1000,max_deltat_ref=2.,base_thresh=100.):
+
+    """
+    Given a data cube of stacked DEMs, of elevation errors and a reference DEM: condition a spatial and temporal filtering of outliers based on WLS linear trends
+
+    :param ds: xarray Dataset of data cube
+    :param ds_arr: Data cube of elevations
+    :param err_arr: Data cube of elevation errors
+    :param t_vals: Time vector of data cube
+    :param fn_ref_dem: Filename for input reference DEM
+    :param ref_dem_date: Date of reference DEM
+    :param max_dhdt: Maximum positive/negative elevation change rate per year from reference elevations [-50 m,50 m]
+    :param nproc: Number of cores for multiprocessing [1]
+    :param cutoff_kern_size: Radius size for kernel spatial filtering [1000 m]
+    :param max_deltat_ref: Maximum time lag between acquisition of reference DEM and date provided [2 yr]
+    :param base_thresh: Base vertical threshold for the temporal filter (avoid elevations close to reference) [100 m]
+
+    :return: Filtered data cube
+    """
+
+    # TODO: remove ds from the list of inputs, and provide ref_dem_arr instead of fn_ref_dem?
 
     print('Performing WLS to condition filtering...')
 
@@ -1605,6 +1878,7 @@ def robust_wls_ref_filter_stack(ds, ds_arr,err_arr,t_vals,fn_ref_dem,ref_dem_dat
     tmp_dem = GeoImg(fn_ref_dem)
     ref_dem = tmp_dem.reproject(tmp_geo)
     ref_arr = ref_dem.img
+    #TODO: do not hardcore resolution
     res = 100.
     rad = int(np.floor(cutoff_kern_size / res))
 
@@ -1733,11 +2007,11 @@ def fit_stack(fn_stack, fit_extent=None, fn_ref_dem=None, ref_dem_date=None, fil
               conf_filt_ls=0.99, tlim=None, tstep=0.25, outfile='fit.nc', write_filt=False, clobber=False,
               merge_date=False, dask_parallel=False):
     """
-    Given a netcdf stack of DEMs, perform temporal fitting with uncertainty propagation
+    Given a netcdf stack of DEMs, perform filtering and temporal fitting of elevation with uncertainty propagation
 
     :param fn_stack: Filename for input netcdf file
-    :param fn_ref_dem: Filename for input reference DEM (maybe we change that to a footprint shapefile to respect your original structure?)
-    :param ref_dem_date: Date of ref_dem
+    :param fn_ref_dem: Filename for input reference DEM
+    :param ref_dem_date: Date of reference DEM
     :param filt_ref: Type of filtering
     :param time_filt_thresh: Maximum dh/dt from reference DEM for time filtering
     :param inc_mask: Optional inclusion mask
