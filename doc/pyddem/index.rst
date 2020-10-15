@@ -1,4 +1,4 @@
-python
+pyddem
 ====================================
 
 pyddem python modules and shell scripts
