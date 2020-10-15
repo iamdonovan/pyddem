@@ -1,4 +1,4 @@
-creating a stack of dems with pyddem
+Creating a stack of DEMs with pyddem
 ====================================
 
 The basic procedure for stacking DEMs involves using either :func:`pyddem.stack_tools.create_mmaster_stack`
@@ -24,14 +24,14 @@ something like this:
 | 0   | 59_25_1_2_30m_v3.0_reg_dem.tif | NorthAsia     | ~/data/ArcticDEM/v3.0/Mosaic |
 +-----+--------------------------------+---------------+------------------------------+
 
-With this, create_mmaster_stack() will create a VRT from all tiles that intersect the boundary of the stack, and use this
+With this, :func:`pyddem.stack_tools.create_mmaster_stack` will create a VRT from all tiles that intersect the boundary of the stack, and use this
 to co-register each individual DEM in turn. You can also pass filenames for an exclusion mask (i.e., glaciers) to identify
 terrain that should not be included in the co-registration, as well as an inclusion mask (i.e., land).
 
 Running from a script
 #####################
-The following example demonstrates how you can run :doc:`../pyddem/modules/stack_tools#pyddem.create_mmaster_stack`
-from your own script. create_mmaster_stack() will load each of the DEMs in turn and insert it into the stack.
+The following example demonstrates how you can run :func:`pyddem.stack_tools.create_mmaster_stack`
+from your own script. :func:`pyddem.stack_tools.create_mmaster_stack` will load each of the DEMs in turn and insert it into the stack.
 ::
     from glob import glob
     from pyddem.stack_tools import create_mmaster_stack
