@@ -1,7 +1,7 @@
 creating a stack of dems with pyddem
 ====================================
 
-The basic procedure for stacking DEMs involves using either :doc:`../pyddem/modules/stack_tools#pyddem.stack_tools.create_mmaster_stack`
+The basic procedure for stacking DEMs involves using either :func:`pyddem.stack_tools.create_mmaster_stack`
 or :doc:`../pyddem/scripts/stack_dems` from the command line.
 
 The first step is to have a number of DEMs available to stack. For this example, we'll assume that these are in the same
@@ -64,4 +64,5 @@ We can do the same thing as above using the command-line script provided in **bi
     stack_dems.py AST*.tif -res 100 -o my_stack.nc -exc_mask ~/data/RGI/v6.0/10_rgi60_NorthAsia/10_rgi60_NorthAsia.shp
             -ref_tiles '~/data/ArcticDEM/v3.0/Mosaic/ArcticDEM_Tiles.shp' -c -do_coreg -add_ref
 
-Once you have a stack of DEMs, you can run various :doc:`fitting` routine on the stack to fit a time series of elevation.
+Once you have a stack of DEMs, you can run various :doc:`fitting <fitting>` routines on the stack
+to fit a time series of elevation.
