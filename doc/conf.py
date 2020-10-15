@@ -34,7 +34,7 @@ autodoc_mock_imports = ['numpy', 'scipy', 'matplotlib', 'fiona', 'cv2', 'pyvips'
                         'sklearn.linear_model', 'sklearn.gaussian_process', 'numba', 'skimage.io',
                         'scipy.ndimage.morphology', 'sklearn.gaussian_process.kernels', 'ogr', 'numpy.polynomial',
                         'scipy.ndimage', 'pybob.bob_tools', 'pybob.ddem_tools', 'lxml.builder', 'gdalconst',
-                        'skgstat', 'pymmaster.mmaster_tools', 'pybob.ICESat']
+                        'skgstat', 'pymmaster', 'pymmaster.mmaster_tools', 'pybob.ICESat']
 
 sys.modules.update((mod_name, Mock()) for mod_name in autodoc_mock_imports)
 sys.path.insert(0, os.path.abspath('..'))
