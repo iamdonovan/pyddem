@@ -56,6 +56,9 @@ def main():
     parser = _argparser()
     args = parser.parse_args()
 
+    if args.ref_date is not None:
+        args.ref_date = np.datetim64(args.ref_date)
+
     fit_stack(args.stack,
               fit_extent=args.extent,
               fn_ref_dem=args.ref_dem,
