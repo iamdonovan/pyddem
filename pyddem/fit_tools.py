@@ -2078,7 +2078,7 @@ def fit_stack(fn_stack, fit_extent=None, fn_ref_dem=None, ref_dem_date=None, fil
     :param fit_extent: extent over which to limit fit, as [xmin, xmax, ymin, ymax]
     :param fn_ref_dem: Filename for input reference DEM
     :param ref_dem_date: Date of reference DEM
-    :param filt_ref: Type of filtering
+    :param filt_ref: Type of filtering. One of 'min_max', 'time', or 'both'. Requires a reference DEM.
     :param time_filt_thresh: Maximum dh/dt from reference DEM for time filtering
     :param inc_mask: Optional inclusion mask. Pixels outside of the mask will not be fit.
     :param exc_mask: Optional exclusion mask. Pixels inside of the mask will not be fit.

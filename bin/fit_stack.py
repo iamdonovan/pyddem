@@ -17,7 +17,7 @@ def _argparser():
     parser.add_argument('-ref_date', type=str, action='store', default=None,
                         help='Date of reference DEM.')
     parser.add_argument('-f', '--filt_ref', type=str, action='store', default='min_max',
-                        help='Type of filtering to do. One of min_max, ')
+                        help='Type of filtering to do. One of min_max, time, or both ')
     parser.add_argument('-filt_thresh', type=float, action='store', default=None,
                         help='Maximum dh/dt from reference DEM for time filtering.')
     parser.add_argument('-inc_mask', type=str, action='store', default=None,
