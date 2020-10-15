@@ -6,12 +6,17 @@ import sys
 import numpy as np
 import pandas as pd
 from datetime import datetime
-import gdal
-import ogr
-import osr
-import gdalconst
+import gdal, ogr, osr, gdalconst
 
 def SRTMGL1_naming_to_latlon(tile_name):
+    """
+    Convert widely used 1x1° tile naming convention to lat, lon (originally SRTMGL1)
+
+    :param tile_name: naming convention of southwestern 1x1° corner
+
+    :returns: lat, lon of southwestern corner
+    """
+
     if tile_name[0] == 'S' or tile_name[0] == 's':
         lat = -int(tile_name[1:3])
     elif tile_name[0] == 'N' or tile_name[0] == 'n':
@@ -29,6 +34,14 @@ def SRTMGL1_naming_to_latlon(tile_name):
     return lat, lon
 
 def latlon_to_SRTMGL1_naming(lat,lon):
+    """
+    Convert lat, lon to widely used 1x1° tile naming (originally SRTMGL1)
+
+    :param lat: latitude of southwestern corner
+    :param lon: longitude of southwestern corner
+
+    :returns: tile naming
+    """
 
     if lat<0:
         str_lat = 'S'
@@ -46,6 +59,14 @@ def latlon_to_SRTMGL1_naming(lat,lon):
 
 
 def latlon_to_UTM(lat,lon):
+    """
+    Get UTM zone, and corresponding EPSG given lat,lon coordinates
+
+    :param lat: latitude
+    :param lon: longitude
+
+    :returns: epsg, UTM zone naming
+    """
     # utm module excludes regions south of 80°S and north of 84°N, unpractical for global vector manipulation
     # utm_all = utm.from_latlon(lat,lon)
     # utm_nb=utm_all[2]
@@ -70,6 +91,13 @@ def latlon_to_UTM(lat,lon):
 
 
 def epsg_from_utm(utm_zone):
+    """
+    Get EPSG code from UTM zone naming
+
+    :param utm_zone: UTM zone naming
+
+    :returns: epsg
+    """
     str_utm_nb = utm_zone[0:2]
     str_utm_ns = utm_zone[2]
 
@@ -84,6 +112,14 @@ def epsg_from_utm(utm_zone):
 
 
 def utm_from_epsg(epsg):
+    """
+    Get UTM zone naming from EPSG code
+
+    :param epsg: EPSG code
+
+    :returns: UTM zone naming
+    """
+
     str_epsg = str(epsg)
     str_epsg_ns = str_epsg[0:3]
     str_epsg_nb = str_epsg[3:5]
@@ -99,6 +135,15 @@ def utm_from_epsg(epsg):
 
 
 def poly_utm_latlontile(tile_name, utm_zone):
+    """
+    Create polygon of a 1x1° lat, lon tile projected in a specific UTM zone
+
+    :param tile_name: tile naming
+    :param utm_zone: UTM zone naming
+
+    :returns: OGR polygon
+      """
+
     lat, lon = SRTMGL1_naming_to_latlon(tile_name)
     extent = lon, lat, lon + 1, lat + 1
     poly = poly_from_extent(extent)
@@ -113,6 +158,15 @@ def poly_utm_latlontile(tile_name, utm_zone):
 
 #create a regularly spaced extent in a utm zone, with 3 overlapping pixel on the edges for reprojections
 def niceextent_utm_latlontile(tile_name, utm_zone, gsd):
+    """
+    Create overlapping tile extents to avoid resampling effects at the edges
+
+    :param tile_name: tile naming
+    :param utm_zone: UTM zone naming
+    :param gsd: ground sampling distance (pixel size)
+
+    :returns: extent
+    """
     poly = poly_utm_latlontile(tile_name,utm_zone)
     xmin, ymin, xmax, ymax = extent_from_poly(poly)
 
@@ -125,6 +179,20 @@ def niceextent_utm_latlontile(tile_name, utm_zone, gsd):
 
 
 def create_mem_shp(geom, srs, layer_name='NA', layer_type=ogr.wkbPolygon, field_id='ID', field_val='1',field_type=ogr.OFTInteger):
+    """
+    Create shapefile object in memory
+
+    :param geom: Geometry object
+    :param srs: Projection
+    :param layer_name: Shapefile layer name
+    :param layer_type: Shapefile layer type (polygon by default)
+    :param field_id: Basic field id (field necessary by default)
+    :param field_val: Basic field value
+    :param field_type: Basic field type
+
+    :returns: OGR DataSet
+    """
+
     ds = gdal.GetDriverByName('MEMORY').Create('test.shp', 0, 0, 0, gdal.OF_VECTOR)
     layer = ds.CreateLayer(layer_name, srs, layer_type)
     # Add one attribute
@@ -145,6 +213,14 @@ def create_mem_shp(geom, srs, layer_name='NA', layer_type=ogr.wkbPolygon, field_
     return ds
 
 def latlontile_nodatamask(geoimg,tile_name):
+    """
+    Create mask on the extent of a 1x1° tile (used to avoid sampling twice neighbouring tiles in final calculations, although those need to have overlapping pixels to avoid resampling issues)
+
+    :param geoimg: GeoImg
+    :param tile_name: Tile naming
+
+    :returns: Mask
+    """
 
     #create latlon tile polygon in utm projection
     lat, lon = SRTMGL1_naming_to_latlon(tile_name)
@@ -158,6 +234,13 @@ def latlontile_nodatamask(geoimg,tile_name):
     return geoimg_mask_on_feat_shp_ds(ds_shp, geoimg)
 
 def poly_from_coords(list_coord):
+    """
+    Create polygon from list of coordinates
+
+    :param list_coord: List of tuples, need to repeat the first/last in order to close polygon
+
+    :returns: OGR polygon
+    """
     # creating granule polygon
     ring = ogr.Geometry(ogr.wkbLinearRing)
     for coord in list_coord:
@@ -176,6 +259,13 @@ def get_poly_centroid(poly):
     return center_lon, center_lat
 
 def extent_rast(raster_in):
+    """
+    Get raster extent
+
+    :param raster_in: Filename of raster
+
+    :returns: extent
+    """
     ds = gdal.Open(raster_in, gdalconst.GA_ReadOnly)
     x0_ref, dx_ref, dxdy_ref, y0_ref, dydx_ref, dy_ref = ds.GetGeoTransform()
     proj_wkt = ds.GetProjection()
@@ -197,6 +287,13 @@ def extent_rast(raster_in):
 
 
 def poly_from_extent(extent):
+    """
+    Create polygon based on extent
+
+    :param extent: extent (xmin, ymin, xmax, ymax)
+
+    :returns: OGR polygon
+    """
     # create a polygon from extent, coordinates order as in gdal
     xmin, ymin, xmax, ymax = extent
 
@@ -214,13 +311,29 @@ def poly_from_extent(extent):
 
 
 def extent_from_poly(poly):
+    """
+    Get extent of polygon
+
+    :param poly: OGR polygon
+
+    :returns: extent
+    """
     env = poly.GetEnvelope()
     extent = env[0], env[2], env[1], env[3]
 
     return extent
 
-
 def coord_trans(is_src_wkt, proj_src, is_tgt_wkt, proj_tgt):
+    """
+    Create a OGR Transform object to reproject between different coordinate systems
+
+    :param is_src_wkt: Boolean, is the provided projection source in WKT, if not it needs to be EPSG code (int)
+    :param proj_src: WKT or EPSG code for projection source
+    :param is_tgt_wkt: Boolean, is the provided projection target in WKT, if not it needs to be EPSG code (int)
+    :param proj_tgt: WKT or EPSG code for projection target
+
+    :returns: OGR Transform object
+    """
     # choice between WKT or EPSG
     source_proj = osr.SpatialReference()
     if is_src_wkt:
@@ -240,6 +353,16 @@ def coord_trans(is_src_wkt, proj_src, is_tgt_wkt, proj_tgt):
 
 
 def list_shp_field_inters_extent(fn_shp, field_name, extent, proj_ext):
+    """
+    List features intersecting an extent in a shapefile
+
+    :param fn_shp: Filename of shapefile
+    :param field_name: Field name to list for the features
+    :param extent: extent
+    :param proj_ext: projection of extent
+
+    :returns: List of field feature values (e.g., RGIIds)
+    """
     poly = poly_from_extent(extent)
     driver = ogr.GetDriverByName("ESRI Shapefile")
     ds = driver.Open(fn_shp, 0)
@@ -262,6 +385,14 @@ def list_shp_field_inters_extent(fn_shp, field_name, extent, proj_ext):
     return list_field_inters
 
 def inters_list_poly_with_poly(list_poly,poly):
+    """
+    Find intersection between a list of polygon and another polygon
+
+    :param list_poly: List of OGR polygons
+    :param poly: OGR polygon
+
+    :returns: List of intersecting OGR polygons
+    """
 
     list_inters=[]
     for poly_2 in list_poly:
@@ -273,6 +404,16 @@ def inters_list_poly_with_poly(list_poly,poly):
     return list_inters
 
 def get_buffered_area_ratio(geom,proj_in,buff):
+
+    """
+    Get buffered area ratio (for error estimation): reproject in a meter system centered on polygon, buffer of a certain distance, and look
+
+    :param geom: OGR polygon
+    :param proj_in: Projection source
+    :param buff: Buffer distance
+
+    :returns: Area buffered to area ratio in percent, Area of polygon
+    """
 
     centroid_lon, centroid_lat, _ = geom.Centroid().GetPoint()
     epsg, utm = latlon_to_UTM(centroid_lat,centroid_lon)
@@ -289,6 +430,13 @@ def get_buffered_area_ratio(geom,proj_in,buff):
 
 
 def create_mem_raster_on_geoimg(geoimg):
+    """
+    Create raster in memory with the same extent that a GeoImg
+
+    :param geoimg: GeoImg
+
+    :returns: GDAL DataSet
+    """
     masktarget = gdal.GetDriverByName('MEM').Create('', geoimg.npix_x, geoimg.npix_y, 1, gdal.GDT_Byte)
     masktarget.SetGeoTransform((geoimg.xmin, geoimg.dx, 0, geoimg.ymax, 0, geoimg.dy))
     masktarget.SetProjection(geoimg.proj_wkt)
@@ -298,6 +446,18 @@ def create_mem_raster_on_geoimg(geoimg):
 
 
 def geoimg_mask_on_feat_shp_ds(shp_ds, geoimg, layer_name='NA', feat_id='ID', feat_val='1', **kwargs):
+    """
+    Create mask of a shapefile feature on a GeoImg
+
+    :param shp_ds: GDAL DataSet of input shapefile
+    :param geoimg: GeoImg
+    :param layer_name: Layer name for shapefile
+    :param feat_id: Feature of interest
+    :param feat_val: Value of the feature to be masked
+
+
+    :returns: GDAL DataSet
+    """
     ds_out = create_mem_raster_on_geoimg(geoimg)
     rasterize_feat_shp_ds(shp_ds, ds_out, layer_name=layer_name, feat_id=feat_id, feat_val=feat_val, **kwargs)
     mask = ds_out.GetRasterBand(1).ReadAsArray()
@@ -322,6 +482,13 @@ def rasterize_feat_shp_ds(shp_ds, raster_ds, layer_name='NA', feat_id='ID', feat
 
 
 def extract_odl_astL1A(fn):
+    """
+    Extract data from ASTER L1A metadata (old ODL format)
+
+    :param fn: Filename of L1A .met file
+
+    :returns: Arrays and DataFrames with metadata
+    """
     f = open(fn, 'r')
     body = f.read()
 
@@ -398,6 +565,14 @@ def extract_odl_astL1A(fn):
 
 
 def l1astrip_polygon(l1a_subdir):
+
+    """
+    Compute the merged polygon of stitched ASTER L1A granules from the metadata of the original granules
+
+    :param l1a_subdir: Directory containing several L1A .met files
+
+    :returns: OGR polygon
+    """
     # number of l1a granules
     strip_l1a = [os.path.join(l1a_subdir, l1a) for l1a in os.listdir(l1a_subdir) if l1a.endswith('.met')]
 

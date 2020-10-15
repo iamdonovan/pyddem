@@ -29,6 +29,15 @@ from glob import glob
 import itertools
 
 def inters_feat_shp_stacks(fn_shp, list_fn_stack, feat_field_name):
+    """
+     Find all intersecting stacks for features of a shapefile, for a list of netCDF stacks (tiles for example)
+
+     :param fn_shp: Filename of shapefile
+     :param list_fn_stack: List of filenames of netCDF stacks
+     :param feat_field_name: Name of shapefile feature to sort by (e.g., RGIIDs for RGI glaciers)
+
+     :returns: List of all features found, Corresponding list of intersecting stacks per feature
+     """
     # get intersecting rgiid for each stack extent
     list_list_rgiid = []
     for fn_stack in list_fn_stack:
@@ -64,6 +73,15 @@ def inters_feat_shp_stacks(fn_shp, list_fn_stack, feat_field_name):
 
 
 def sel_dc(ds, tlim, mask):
+    """
+    Subset datacube in space and time with a spatial mask and time limits
+
+    :param ds: xarray Dataset
+    :param tlim: Time limits
+    :param mask: Raster boolean mask
+
+    :returns: Subset Dataset, Subset boolean mask, Spatial index slices (to identify subset position in the original datacube, for instance)
+    """
     # select data cube on temporal and spatial mask
     if tlim is None:
         time1 = time2 = None
@@ -82,6 +100,14 @@ def sel_dc(ds, tlim, mask):
     return dc, submask, (slice(minx,maxx),slice(miny,maxy))
 
 def int_dc(dc, mask, **kwargs):
+    """
+       Wrapper to for classic integration of elevation time series into volume change time series
+
+       :param dc: xarray Dataset (subset)
+       :param mask: Raster boolean mask
+
+       :returns: DataFrame of integrated elevation change
+       """
     # integrate data cube over masked area
     dh = dc.variables['z'].values - dc.variables['z'].values[0]
     err = np.sqrt(dc.variables['z_ci'].values ** 2 + dc.variables['z_ci'].values[0] ** 2)
@@ -203,6 +229,8 @@ def remove_tmp_dir_for_outfile(file_out):
 
 def saga_aspect_slope_curvature(dem_in, topo_out, method_nb=5):
     """
+    Derive maximum curvature using SAGA (command line)
+
     :param dem_in: dem input
     :param topo_out: raster out (3 bands: aspect, slope, curvature)
     :param method_nb: algorithm used, see function description
@@ -254,6 +282,13 @@ def saga_aspect_slope_curvature(dem_in, topo_out, method_nb=5):
 
 
 def icesat_comp_wrapper(argsin):
+    """
+    Multiprocessing wrapper to compare ICESat data with elevation time series
+
+    :param argsin: Tuple of arranged data (see comp_stacks_icesat)
+
+    :returns: Arranged output data (see_comp_stacks_icesat)
+    """
 
     fn_stack,ice_coords,ice_latlon,ice_elev,ice_date,groups,dates,read_filt,gla_mask,inc_mask,exc_mask = argsin
 
@@ -476,6 +511,19 @@ def icesat_comp_wrapper(argsin):
 
 
 def comp_stacks_icesat(list_fn_stack,fn_icesat,gla_mask=None,inc_mask=None,exc_mask=None,nproc=1,read_filt=False,shift=None):
+    """
+    Compare ICESat data with elevation time series
+
+    :param list_fn_stack: List of filename of netCDF to compare to
+    :param fn_icesat: Filename of ICESat HDF5 file
+    :param gla_mask: Filename of glacier shapefile
+    :param inc_mask: Filename of inclusion shapefile (e.g. land)
+    :param exc_mask: Filename of exclusion shapeifle (e.g. ocean)
+    :param nproc: Number of cores used for multiprocessing [1]
+    :param read_filt: Boolean, read boolean data cube of valid observation
+
+    :returns: Arranged output data (see_comp_stacks_icesat)
+    """
 
     ice = ICESat(fn_icesat)
     el_limit = -200
@@ -620,6 +668,19 @@ def comp_stacks_icesat(list_fn_stack,fn_icesat,gla_mask=None,inc_mask=None,exc_m
 
 
 def comp_stacks_icebridge(list_fn_stack,fn_icebridge,gla_mask=None,inc_mask=None,exc_mask=None,nproc=1,read_filt=False):
+    """
+    Compare IceBridge data with elevation time series
+
+    :param list_fn_stack: List of filename of netCDF to compare to
+    :param fn_icebridge: Filename of IceBridge post-processed into .csv
+    :param gla_mask: Filename of glacier shapefile
+    :param inc_mask: Filename of inclusion shapefile (e.g. land)
+    :param exc_mask: Filename of exclusion shapeifle (e.g. ocean)
+    :param nproc: Number of cores used for multiprocessing [1]
+    :param read_filt: Boolean, read boolean data cube of valid observation
+
+    :returns: Arranged output data (see_comp_stacks_icesat)
+    """
 
     iceb = pd.read_csv(fn_icebridge)
 
@@ -762,6 +823,13 @@ def combine_postproc_stacks_tvol(list_fn_stack, fn_shp, feat_id='RGIId', tlim=No
 
 
 def get_dt_closest_valid(ds_filt,dates):
+    """
+    Derive data cube of time lag to closest valid observation based on the date vector of the time series and a boolean data cube of valid observation at original dates
+    :param ds_filt: Boolean data cube of valid observations
+    :param dates: Time vector of time series
+
+    :returns: Data cube indexed to time vector with time lags to observation, Data cube with count of valid observation between time index, Data cube with yearly count of valid observation at the first yearly time index
+    """
 
     # we read the boolean data cube indicating positions where original data was used
 
@@ -819,6 +887,13 @@ def get_dt_closest_valid(ds_filt,dates):
     return ds_filt_sub, valid_obs, valid_obs_peryear
 
 def sel_int_hypsocheat(argsin):
+    """
+    Multiprocessing wrapper by shapefile feature for "hypsometric cheat" volume integration of elevation time series
+
+    :param argsin: Tuple with: list of filename of netCDF stacks, shapefile parameters (see hypsocheat_postproc_stacks_tvol), time limits, processing index
+
+    :returns: Three dataframes of volume change (see hypso_dc in volint_tools.py)
+    """
 
     # integrate volume without having to know the exact spatial disposition: works for hypsometric (needs only reference elevation)
     # a LOT faster as we don't need to combine (reproject + merge) stacks
@@ -948,14 +1023,30 @@ def sel_int_hypsocheat(argsin):
 
     return df_tot, df_hyp_tot, df_int_tot
 
-def hypsocheat_postproc_stacks_tvol(list_fn_stack, fn_shp, feat_id='RGIId', tlim=None,nproc=64, outfile='int_dh.csv'):
+def hypsocheat_postproc_stacks_tvol(list_fn_stack, fn_shp, feat_id='RGIId', tlim=None,nproc=1, outfile='int_dh.csv'):
+    """
+    Hypsometric cheat volume integration of elevation time series
+    The objective of the "cheat" is to highly decrease processing time by allowing to combine parts of shapefile features (e.g., glaciers)
+    which are projected in different georeferencing systems in the stacks (projected in UTM), without having to merge the stacks into the same projection
+    Because integration is hypsometric (based on reference elevation of the glacier), we do not need the information of spatial structure of the glacier
+
+    :param list_fn_stack: List of filenames of netCDF elevation time series
+    :param fn_shp: Filename of shapefile
+    :param feat_id: Feature name of interest
+    :param tlim: Time limits for integration
+    :param nproc: Number of cores used for multiprocessing [1]
+    :param outfile: Filename of output .csv
+
+    :returns:
+    """
 
     # get all rgiid intersecting stacks and the list of intersecting stacks
     start = time.time()
 
     all_rgiids, list_list_stacks = inters_feat_shp_stacks(fn_shp, list_fn_stack, feat_id)
 
-    # sort by rgiid group with same intersecting stacks: !!! commenting to speed up things CPU wise, while using more RAM wise: OK for 100 m stacks
+    # sort by rgiid group with same intersecting stacks (avoid loading + combining several time similar groups of stacks)
+    # !!! commenting to speed up things CPU wise for 100 m stacks, but need to uncomment this for higher resolution !!!
     # all_rgiids = [rgiid for _, rgiid in sorted(zip(list_list_stacks,all_rgiids))]
     # list_list_stacks = sorted(list_list_stacks)
 
@@ -1010,6 +1101,11 @@ def hypsocheat_postproc_stacks_tvol(list_fn_stack, fn_shp, feat_id='RGIId', tlim
     df_int_final.to_csv(fn_int_csv,index=False)
 
 def get_base_df_inventory(dir_shp,outfile):
+    """
+    Create a "base" dataframe which contains characteristics of RGIIds features (this is done separately to avoid duplicating that info in GBs of data into elevation time series, as those are 2D DataFrames)
+    :param dir_shp: Directory containing RGI shapefiles
+    :param outfile: Output .csv file containing dataframe
+    """
 
     list_fn_shp = glob(os.path.join(dir_shp,'*/*.shp'),recursive=True)
 
@@ -1062,6 +1158,15 @@ def get_base_df_inventory(dir_shp,outfile):
 
 
 def add_base_to_int(df,fn_base,reg):
+    """
+    Use "base" RGI file to check whether all glaciers are covered before aggregation, and to remove nominal glaciers and CL2 glacier estimates
+
+    :param df: DataFrame of integrated volume time series
+    :param fn_base: Filename of "base" RGI file
+    :param reg: RGI region number: 20 corresponds to Alaska and WNA combined, 21 corresponds to HMA combined (necessary for some uncertainty calculations as those are contiguous)
+
+    :returns: DataFrame of integrated volume time series with nominal, CL2 glaciers removed and not-covered glaciers added with nodata
+    """
 
     # if we can, help ourselves with pre-compiled data for all glaciers
     df_base = pd.read_csv(fn_base)
@@ -1113,6 +1218,15 @@ def add_base_to_int(df,fn_base,reg):
     return df
 
 def aggregate_int_to_all(df,nproc=1,get_corr_err=True):
+    """
+    Aggregate spatially per-glaciers volume changes time series and propagate errors
+
+    :param df: DataFrame of integrated volume time series
+    :param nproc: Number of cores used for multiprocessing [1]
+    :param get_corr_err: Derive correlated error (long): currently forced to annual only, because seasonal biases are not accounted for and can be complex
+
+    :returns: DataFrame of aggregated volume time series
+    """
 
     # get area of glacier without any data to account for it later
     valid = np.logical_and.reduce((~np.isnan(df.dh), ~np.isnan(df.area),~np.isnan(df.err_dh)))
@@ -1205,6 +1319,14 @@ def aggregate_int_to_all(df,nproc=1,get_corr_err=True):
     return df_tot
 
 def df_int_to_base(infile,fn_base=None):
+    """
+     Wrapper for adding base RGI info to DataFrame per glacier to all regions separately and write to .csv
+
+     :param infile: DataFrame of integrated volume time series
+     :param fn_base: Filename of "base" RGI file
+
+     :returns:
+     """
 
     df_init = pd.read_csv(infile)
 
@@ -1243,6 +1365,14 @@ def df_int_to_base(infile,fn_base=None):
             df.to_csv(fn_base_out)
 
 def df_int_to_reg(infile,nproc=1):
+    """
+    Wrapper for integrating volume change time series and write to .csv
+
+    :param infile: DataFrame of integrated volume time series
+    :param nproc: Number of cores used for multiprocessing [1]
+
+    :returns:
+    """
 
     df = pd.read_csv(infile)
 
@@ -1255,6 +1385,17 @@ def df_int_to_reg(infile,nproc=1):
 
 
 def aggregate_all_to_multiannual(df,mult_ann=1,fn_tarea=None,frac_area=None):
+    """
+    Temporal integration of volume change time series into multi-annual change rates and error propagation
+    For regions, we can account for time-varying areas by approximated per-region annual areas (Zemp et al. (2019))
+
+    :param df: DataFrame of volume time series
+    :param mult_ann: Year length for temporal integration
+    :param fn_tarea: Filename of DataFrame with temporally-varying areas
+    :param frac_area: Use only a corresponding fraction of the regional area to estimate time-varying areas (e.g., subset of Greenland, or other)
+
+    :returns: DataFrame of volume change rates for all successive periods fitting the year length
+    """
 
     if np.count_nonzero(~np.isnan(df.dh))==0:
         df_mult_ann = pd.DataFrame()
@@ -1356,6 +1497,15 @@ def aggregate_all_to_multiannual(df,mult_ann=1,fn_tarea=None,frac_area=None):
 
 
 def df_region_to_periods(infile_reg,fn_tarea=None,frac_area=None):
+    """
+    Wrapper for temporal integration of regional volume change time series for all possible 1-,2-,4-,5-,10- and 20-year periods and write to .csv
+
+    :param infile_reg: DataFrame of regional, integrated volume time series
+    :param fn_tarea: Filename of DataFrame with temporally-varying areas
+    :param frac_area: Use only a corresponding fraction of the regional area to estimate time-varying areas (e.g., subset of Greenland, or other)
+
+    :returns:
+    """
 
     df = pd.read_csv(infile_reg)
     fn_out = os.path.join(os.path.dirname(infile_reg),
@@ -1421,7 +1571,18 @@ def wrapper_tile_int_to_all_to_mult_ann(argsin):
 
     return df_mult_all
 
-def df_all_base_to_tile(list_fn_int_base,base_df,tile_size=1,nproc=1,sort_tw=True):
+def df_all_base_to_tile(list_fn_int_base,fn_base,tile_size=1,nproc=1,sort_tw=True):
+    """
+    Integrate all concatenated per-glacier volume change time series on a global tiling of certain size, for all possible 1-,2-,4-,5-,10- and 20-year periods, with error propagation
+
+    :param list_fn_int_base: List of filename of DataFrame of per-glacier volume change time series with base RGIID info added
+    :param fn_base: Filename of "base" RGI file
+    :param tile_size: Size of tiling in lat/lon degrees
+    :param nproc: Number of cores used for multiprocessing [1]
+    :param sort_tw: Sort between marine-terminating and land-terminating glaciers
+
+    :returns:
+    """
 
     fn_out = os.path.join(os.path.dirname(list_fn_int_base[0]), 'dh_world_tiles_' + str(tile_size) + 'deg.csv')
 
@@ -1437,7 +1598,7 @@ def df_all_base_to_tile(list_fn_int_base,base_df,tile_size=1,nproc=1,sort_tw=Tru
     list_tile = world_latlon_tiles(tile_size)
     # list_tile = [np.array([-180,70,-179,71],dtype=float),np.array([-18,64,-17,65],dtype=float),np.array([-17,64,-16,65],dtype=float)]
 
-    df_base = pd.read_csv(base_df)
+    df_base = pd.read_csv(fn_base)
 
     if sort_tw:
         ind_tw = df_base.term == 1
@@ -1556,6 +1717,15 @@ def df_all_base_to_tile(list_fn_int_base,base_df,tile_size=1,nproc=1,sort_tw=Tru
 
 
 def aggregate_df_int_time(infile,tlim=None,rate=False):
+    """
+    Temporal integration over any period, choice between cumulative or rate
+
+    :param infile: Filename of DataFrame with volume change time series
+    :param tlim: Time limits for integration
+    :param rate: Boolean, add rates
+
+    :returns:
+    """
 
     df = pd.read_csv(infile)
 
