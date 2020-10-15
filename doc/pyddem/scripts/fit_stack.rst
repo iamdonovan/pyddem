@@ -1,4 +1,4 @@
-apply_mmaster_corrections.py
+fit_stack.py
 =================================
 
 .. argparse::
