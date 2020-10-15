@@ -6,7 +6,10 @@ import sys
 import numpy as np
 import pandas as pd
 from datetime import datetime
-import gdal, ogr, osr, gdalconst
+import gdal
+import ogr
+import osr
+import gdalconst
 
 def SRTMGL1_naming_to_latlon(tile_name):
     if tile_name[0] == 'S' or tile_name[0] == 's':
