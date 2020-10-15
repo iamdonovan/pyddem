@@ -4,6 +4,7 @@ pyddem.fit_tools provides tools to derive filter and interpolate DEM stacks into
 import os
 import sys
 import time
+
 os.environ["OMP_NUM_THREADS"] = "1"  # export OMP_NUM_THREADS=4
 os.environ["OPENBLAS_NUM_THREADS"] = "1"  # export OPENBLAS_NUM_THREADS=4
 os.environ["MKL_NUM_THREADS"] = "1"  # export MKL_NUM_THREADS=6
@@ -29,7 +30,8 @@ from scipy.ndimage import filters
 from skimage.morphology import disk
 from sklearn.linear_model import LinearRegression
 from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import RBF, ConstantKernel as C, RationalQuadratic as RQ, ExpSineSquared as ESS, PairwiseKernel
+from sklearn.gaussian_process.kernels import RBF, ConstantKernel as C, RationalQuadratic as RQ, ExpSineSquared as ESS, \
+    PairwiseKernel
 from numba import jit, vectorize, float32
 from llc import jit_filter_function
 from pybob.GeoImg import GeoImg
@@ -45,7 +47,9 @@ from warnings import filterwarnings
 
 filterwarnings('ignore')
 
-def make_dh_animation(ds, month_a_year=None, figsize=(8,10), t0=None, t1=None, dh_max=20, var='z', cmap='RdYlBu', xlbl='easting (km)',
+
+def make_dh_animation(ds, month_a_year=None, figsize=(8, 10), t0=None, t1=None, dh_max=20, var='z', cmap='RdYlBu',
+                      xlbl='easting (km)',
                       ylbl='northing (km)'):
     """
        Generate a GIF from elevation time series
@@ -75,14 +79,13 @@ def make_dh_animation(ds, month_a_year=None, figsize=(8,10), t0=None, t1=None, d
         y0 = t_vals[0].astype('datetime64[D]').astype(object).year
         y1 = t_vals[-1].astype('datetime64[D]').astype(object).year
 
-        t_vec=[]
-        for y in np.arange(y0,y1,1):
-            t=np.datetime64(str(y)+'-'+str(month_a_year).zfill(2)+'-01')
-            td=np.array([(t-t_vals[i].astype('datetime64[D]')).astype(int) for i in range(len(t_vals))])
+        t_vec = []
+        for y in np.arange(y0, y1, 1):
+            t = np.datetime64(str(y) + '-' + str(month_a_year).zfill(2) + '-01')
+            td = np.array([(t - t_vals[i].astype('datetime64[D]')).astype(int) for i in range(len(t_vals))])
 
             closer_dat = t_vals[(np.abs(td) == np.min(np.abs(td)))][0]
             t_vec.append(closer_dat)
-
 
         ds_sub = ds.sel(time=t_vec)
         # mid = int(np.floor(len(ds_sub.time.values)/2))
@@ -110,8 +113,8 @@ def make_dh_animation(ds, month_a_year=None, figsize=(8,10), t0=None, t1=None, d
     ax.set_xlabel(xlbl)
 
     for i in range(len(times[1:])):
-        im = ax.imshow(dh_[i+1], vmin=-dh_max, vmax=dh_max, cmap=cmap, extent=nice_ext)
-        ann = ax.annotate(times[i+1], xy=(0.05, 0.05), xycoords='axes fraction', fontsize=20,
+        im = ax.imshow(dh_[i + 1], vmin=-dh_max, vmax=dh_max, cmap=cmap, extent=nice_ext)
+        ann = ax.annotate(times[i + 1], xy=(0.05, 0.05), xycoords='axes fraction', fontsize=20,
                           fontweight='bold', color='black', family='monospace')
         ims.append([im, ann])
 
@@ -122,7 +125,8 @@ def write_animation(fig, ims, outfilename='output.gif', ani_writer='imagemagick'
     ani = animation.ArtistAnimation(fig, ims, **kwargs)
     ani.save(outfilename, writer=ani_writer)
 
-def get_dem_date(ds,ds_filt,t,outname):
+
+def get_dem_date(ds, ds_filt, t, outname):
     """
        Extract a DEM from an elevation time series, with elevation error and time lag to the closest observation
 
@@ -141,7 +145,7 @@ def get_dem_date(ds,ds_filt,t,outname):
     h = dc.variables['z'].values[0]
     err = dc.variables['z_ci'].values[0]
 
-    dates=[t]
+    dates = [t]
     t_vals = list(ds_filt.time.values)
     dates_rm_dupli = sorted(list(set(t_vals)))
     ind_firstdate = []
@@ -187,8 +191,8 @@ def get_dem_date(ds,ds_filt,t,outname):
     tmp_img.img = dt
     tmp_img.write(os.path.join(os.path.dirname(outname), os.path.basename(outname) + '_AST_SRTM_dt.tif'))
 
-def get_dem_date_exact(ds,t,outname):
 
+def get_dem_date_exact(ds, t, outname):
     tmp_img = st.make_geoimg(ds)
 
     times = sorted(list(set(list(ds.time.values))))
@@ -204,11 +208,11 @@ def get_dem_date_exact(ds,t,outname):
     tmp_img.img = h
     tmp_img.write(os.path.join(os.path.dirname(outname), os.path.basename(outname) + '_ASTER_recons_h.tif'))
 
-def get_full_dh(ds,t0,t1,outname):
 
+def get_full_dh(ds, t0, t1, outname):
     tmp_img = st.make_geoimg(ds)
 
-    dc = ds.sel(time=slice(t0,t1))
+    dc = ds.sel(time=slice(t0, t1))
 
     dh = dc.variables['z'].values[-1] - dc.variables['z'].values[0]
     err = np.sqrt(dc.variables['z_ci'].values[-1] ** 2 + dc.variables['z_ci'].values[0] ** 2)
@@ -216,21 +220,21 @@ def get_full_dh(ds,t0,t1,outname):
     ind = err > 500.
     dh[ind] = np.nan
     # err_mid = dc.variables['z_ci'].values[int(dc.z.shape[0]/2)]
-    err_mid = np.nanmean(dc.variables['z_ci'].values,axis=0)
+    err_mid = np.nanmean(dc.variables['z_ci'].values, axis=0)
 
     # slope = ds.slope.values
 
     tmp_img.img = dh
-    tmp_img.write(os.path.join(os.path.dirname(outname),os.path.basename(outname)+'_dh.tif'))
+    tmp_img.write(os.path.join(os.path.dirname(outname), os.path.basename(outname) + '_dh.tif'))
     tmp_img.img = err
-    tmp_img.write(os.path.join(os.path.dirname(outname),os.path.basename(outname)+'_err.tif'))
+    tmp_img.write(os.path.join(os.path.dirname(outname), os.path.basename(outname) + '_err.tif'))
     # tmp_img.img = err_mid
     # tmp_img.write(os.path.join(os.path.dirname(outname),os.path.basename(outname)+'_errmid.tif'))
     # tmp_img.img = slope
     # tmp_img.write(os.path.join(os.path.dirname(outname),os.path.basename(outname)+'_slope.tif'))
 
-def reproj_build_vrt(list_dh,utm,out_vrt,res):
 
+def reproj_build_vrt(list_dh, utm, out_vrt, res):
     epsg = vt.epsg_from_utm(utm)
 
     list_fn_out = []
@@ -239,17 +243,18 @@ def reproj_build_vrt(list_dh,utm,out_vrt,res):
         tile_name = os.path.basename(dh).split('_')[0]
         print(tile_name)
         img = GeoImg(dh)
-        dest = gdal.Warp('', img.gd, format='MEM', dstSRS='EPSG:{}'.format(epsg), resampleAlg=gdal.GRA_NearestNeighbour,xRes=res,yRes=res)
+        dest = gdal.Warp('', img.gd, format='MEM', dstSRS='EPSG:{}'.format(epsg), resampleAlg=gdal.GRA_NearestNeighbour,
+                         xRes=res, yRes=res)
 
         try:
             out_img = GeoImg(dest)
         except:
             print('Could not reproject in that projection.')
             continue
-        nodata_mask = vt.latlontile_nodatamask(out_img,tile_name)
-        out_img.img[~nodata_mask]=np.nan
+        nodata_mask = vt.latlontile_nodatamask(out_img, tile_name)
+        out_img.img[~nodata_mask] = np.nan
 
-        fn_out = os.path.join(os.path.dirname(dh),os.path.splitext(os.path.basename(dh))[0]+'_'+str(epsg)+'.tif')
+        fn_out = os.path.join(os.path.dirname(dh), os.path.splitext(os.path.basename(dh))[0] + '_' + str(epsg) + '.tif')
         list_fn_out.append(fn_out)
         out_img.write(fn_out)
 
@@ -277,8 +282,8 @@ def get_stack_mask(maskshp, ds):
     mask = create_mask_from_shapefile(img, maskshp)
     return mask
 
-def vgm_1d(argsin):
 
+def vgm_1d(argsin):
     """
     1D variogram sampling
 
@@ -288,18 +293,19 @@ def vgm_1d(argsin):
     """
 
     t_vals, detrend_elev, lag_cutoff, tstep = argsin
+
     # 1D variogram: inspired by http://connor-johnson.com/2014/03/20/simple-kriging-in-python/
 
     def SVh(P, h, bw):
         # empirical variogram for a single lag
-        pd = np.abs(np.subtract.outer(P[:,0], P[:,0]))
+        pd = np.abs(np.subtract.outer(P[:, 0], P[:, 0]))
         N = pd.shape[0]
         Z = list()
         for i in range(N):
             for j in range(i + 1, N):
                 if (pd[i, j] >= h - bw) and (pd[i, j] <= h + bw):
                     Z.append((P[i, 1] - P[j, 1]) ** 2.0)
-        if len(Z)>0:
+        if len(Z) > 0:
             return np.nansum(Z) / (2.0 * len(Z)), len(Z)
         else:
             return np.nan, 0
@@ -323,24 +329,25 @@ def vgm_1d(argsin):
 
     return sv
 
-def wrapper_vgm1d(argsin):
 
+def wrapper_vgm1d(argsin):
     t_vals, stack_detrend_elev, k, lag_cutoff, tstep = argsin
 
-    _ , nb_iter = np.shape(stack_detrend_elev)
+    _, nb_iter = np.shape(stack_detrend_elev)
 
-    print('Pack of '+str(nb_iter)+' variograms number '+str(k))
+    print('Pack of ' + str(nb_iter) + ' variograms number ' + str(k))
 
-    lags = np.arange(0,lag_cutoff,tstep)
+    lags = np.arange(0, lag_cutoff, tstep)
 
     vdata = np.zeros((len(lags), nb_iter))
     pdata = np.zeros((len(lags), nb_iter))
     for i in np.arange(nb_iter):
-        sv = vgm_1d((t_vals,stack_detrend_elev[:,i],lag_cutoff,tstep))
+        sv = vgm_1d((t_vals, stack_detrend_elev[:, i], lag_cutoff, tstep))
         vdata[:, i] = sv[0]
         pdata[:, i] = sv[1]
 
     return vdata, pdata
+
 
 def vgm_1d_med(argsin):
     """
@@ -352,18 +359,19 @@ def vgm_1d_med(argsin):
     """
 
     t_vals, detrend_elev, lag_cutoff, tstep = argsin
+
     # 1D variogram: inspired by http://connor-johnson.com/2014/03/20/simple-kriging-in-python/
 
     def SVh(P, h, bw):
         # empirical variogram for a single lag
-        pd = np.abs(np.subtract.outer(P[:,0], P[:,0]))
+        pd = np.abs(np.subtract.outer(P[:, 0], P[:, 0]))
         N = pd.shape[0]
         Z = list()
         for i in range(N):
             for j in range(i + 1, N):
                 if (pd[i, j] >= h - bw) and (pd[i, j] <= h + bw):
                     Z.append((P[i, 1] - P[j, 1]) ** 2.0)
-        if len(Z)>0:
+        if len(Z) > 0:
             return np.array(Z)
         else:
             return np.array([np.nan])
@@ -385,19 +393,19 @@ def vgm_1d_med(argsin):
 
     return sv
 
-def wrapper_vgm1d_med(argsin):
 
+def wrapper_vgm1d_med(argsin):
     t_vals, stack_detrend_elev, k, lag_cutoff, tstep = argsin
 
-    _ , nb_iter = np.shape(stack_detrend_elev)
+    _, nb_iter = np.shape(stack_detrend_elev)
 
-    print('Pack of '+str(nb_iter)+' variograms number '+str(k))
+    print('Pack of ' + str(nb_iter) + ' variograms number ' + str(k))
 
-    lags = np.arange(0,lag_cutoff,tstep)
+    lags = np.arange(0, lag_cutoff, tstep)
 
     vlist = list()
     for i in np.arange(nb_iter):
-        sv = vgm_1d_med((t_vals,stack_detrend_elev[:,i],lag_cutoff,tstep))
+        sv = vgm_1d_med((t_vals, stack_detrend_elev[:, i], lag_cutoff, tstep))
         vlist.append(sv)
 
     vzipped = list(zip(*vlist))
@@ -408,23 +416,24 @@ def wrapper_vgm1d_med(argsin):
 
     return vdata
 
-def wrapper_mask(argsin):
 
+def wrapper_mask(argsin):
     mask, arr_mask, cube_mask = argsin
 
-    out_mask = np.logical_and.reduce((mask, cube_mask, arr_mask[None, :, :] * np.ones(np.shape(mask)[0], dtype=bool)[:, None, None]))
+    out_mask = np.logical_and.reduce(
+        (mask, cube_mask, arr_mask[None, :, :] * np.ones(np.shape(mask)[0], dtype=bool)[:, None, None]))
 
     return out_mask
 
-def wrapper_estimate_var(argsin):
 
+def wrapper_estimate_var(argsin):
     dh, bins = argsin
 
     print('Binning slope: ' + str(bins[0][0]) + ' to ' + str(bins[0][1])
           + ' degrees and binning correlation: ' + str(bins[1][0]) + ' to ' + str(bins[1][1]) + ' percent.')
 
     start = time.time()
-    nsamp=10000
+    nsamp = 10000
     print('Selecting a subsample of ' + str(nsamp) + ' points...')
 
     # sample a subset (usually on stable terrain)
@@ -441,8 +450,9 @@ def wrapper_estimate_var(argsin):
 
     return nmd, ns, std
 
-def get_var_by_corr_slope_bins(ds,ds_arr,arr_slope,bins_slope,cube_corr,bins_corr,outfile,inc_mask=None,exc_mask=None,nproc=1):
 
+def get_var_by_corr_slope_bins(ds, ds_arr, arr_slope, bins_slope, cube_corr, bins_corr, outfile, inc_mask=None,
+                               exc_mask=None, nproc=1):
     """
     Sampling method for elevation measurement error from stacks of DEMs: binning of external variables and sampling of variance
 
@@ -466,40 +476,43 @@ def get_var_by_corr_slope_bins(ds,ds_arr,arr_slope,bins_slope,cube_corr,bins_cor
     if inc_mask is not None:
         mask = np.logical_and(get_stack_mask(inc_mask, ds), mask)
     if exc_mask is not None:
-        mask = np.logical_and(~get_stack_mask(exc_mask,ds),mask)
+        mask = np.logical_and(~get_stack_mask(exc_mask, ds), mask)
 
-    dh = ds_arr - ref_arr[None,:,:]
+    dh = ds_arr - ref_arr[None, :, :]
 
-    mask_init = np.logical_and(mask[None,:,:] * np.ones(np.shape(dh)[0],dtype=bool)[:,None,None],np.isfinite(dh))
+    mask_init = np.logical_and(mask[None, :, :] * np.ones(np.shape(dh)[0], dtype=bool)[:, None, None], np.isfinite(dh))
 
-    list_arr_mask = [np.logical_and(np.abs(arr_slope) >= bins_slope[i], np.abs(arr_slope) < bins_slope[i + 1]) for i in range(len(bins_slope)-1)]
-    list_cube_mask = [np.logical_and(np.abs(cube_corr) >= bins_corr[j], np.abs(cube_corr)< bins_corr[j + 1]) for j in range(len(bins_corr)-1)]
+    list_arr_mask = [np.logical_and(np.abs(arr_slope) >= bins_slope[i], np.abs(arr_slope) < bins_slope[i + 1]) for i in
+                     range(len(bins_slope) - 1)]
+    list_cube_mask = [np.logical_and(np.abs(cube_corr) >= bins_corr[j], np.abs(cube_corr) < bins_corr[j + 1]) for j in
+                      range(len(bins_corr) - 1)]
 
-    if nproc==1:
+    if nproc == 1:
         print('Using 1 proc to derive variance...')
         list_nmad, list_ns, list_std, list_bin_slope, list_bin_corr, list_id = ([] for i in range(6))
         for i in range(len(bins_slope) - 1):
-            for j in range(len(bins_corr)-1):
+            for j in range(len(bins_corr) - 1):
                 print('Binning slope: ' + str(bins_slope[i]) + ' to ' + str(bins_slope[i + 1])
-                      + ' degrees and binning correlation: '+str(bins_corr[j]) + ' to '+str(bins_corr[j+1])+ ' percent.')
+                      + ' degrees and binning correlation: ' + str(bins_corr[j]) + ' to ' + str(
+                    bins_corr[j + 1]) + ' percent.')
 
                 slope_mask = list_arr_mask[i]
                 corr_mask = list_cube_mask[j]
 
-                nmd, ns, std = estimate_var(dh,mask_init, arr_mask=slope_mask, cube_mask=corr_mask,nsamp=10000)
+                nmd, ns, std = estimate_var(dh, mask_init, arr_mask=slope_mask, cube_mask=corr_mask, nsamp=10000)
 
                 list_nmad.append(nmd)
                 list_ns.append(ns)
                 list_std.append(std)
-                list_id.append('slope: '+str(bins_slope[i]) + '-'
-                               + str(bins_slope[i + 1])+',corr:'+str(bins_corr[j]) + '-' + str(bins_corr[j + 1]))
-                list_bin_slope.append(bins_slope[i]+(bins_slope[i+1]-bins_slope[i])/2)
-                list_bin_corr.append(bins_corr[j]+(bins_corr[j+1]-bins_corr[j])/2)
+                list_id.append('slope: ' + str(bins_slope[i]) + '-'
+                               + str(bins_slope[i + 1]) + ',corr:' + str(bins_corr[j]) + '-' + str(bins_corr[j + 1]))
+                list_bin_slope.append(bins_slope[i] + (bins_slope[i + 1] - bins_slope[i]) / 2)
+                list_bin_corr.append(bins_corr[j] + (bins_corr[j + 1] - bins_corr[j]) / 2)
     else:
-        #TODO: does not work, even with np.copy()...
+        # TODO: does not work, even with np.copy()...
 
-        print('Using '+str(nproc)+' procs to derive variance...')
-        pool = mp.Pool(nproc,maxtasksperchild=1)
+        print('Using ' + str(nproc) + ' procs to derive variance...')
+        pool = mp.Pool(nproc, maxtasksperchild=1)
 
         # print('Creating bin masks...')
         # argsin_mask = [(mask_init,list_arr_mask[i],list_cube_mask[j]) for i in range(len(bins_slope)-1) for j in range(len(bins_corr)-1)]
@@ -508,13 +521,17 @@ def get_var_by_corr_slope_bins(ds,ds_arr,arr_slope,bins_slope,cube_corr,bins_cor
         # pool.join()
         # pool = mp.Pool(nproc,maxtasksperchild=1)
 
-        list_mask = [np.logical_and.reduce((mask_init,list_cube_mask[j],list_arr_mask[i][None,:,:] * np.ones(np.shape(dh)[0],dtype=bool)[:,None,None])) for i in range(len(bins_slope)-1) for j in range(len(bins_corr)-1)]
+        list_mask = [np.logical_and.reduce((mask_init, list_cube_mask[j],
+                                            list_arr_mask[i][None, :, :] * np.ones(np.shape(dh)[0], dtype=bool)[:, None,
+                                                                           None])) for i in range(len(bins_slope) - 1)
+                     for j in range(len(bins_corr) - 1)]
 
         list_dh = [dh[m] for m in list_mask]
-        list_bins = [((bins_slope[i],bins_slope[i+1]),(bins_corr[j],bins_corr[j+1])) for i in range(len(bins_slope)-1) for j in range(len(bins_corr)-1)]
-        argsin = [(list_dh[i],list_bins[i]) for i in range(len(list_dh))]
+        list_bins = [((bins_slope[i], bins_slope[i + 1]), (bins_corr[j], bins_corr[j + 1])) for i in
+                     range(len(bins_slope) - 1) for j in range(len(bins_corr) - 1)]
+        argsin = [(list_dh[i], list_bins[i]) for i in range(len(list_dh))]
         print('Deriving variance...')
-        outputs = pool.map(wrapper_estimate_var,argsin,chunksize=1)
+        outputs = pool.map(wrapper_estimate_var, argsin, chunksize=1)
         pool.close()
         pool.join()
 
@@ -523,22 +540,24 @@ def get_var_by_corr_slope_bins(ds,ds_arr,arr_slope,bins_slope,cube_corr,bins_cor
         list_nmad = zipped[0]
         list_ns = zipped[1]
         list_std = zipped[2]
-        list_id = ['slope: '+str(bins_slope[i]) + '-' + str(bins_slope[i + 1])+',corr:'+str(bins_corr[j]) + '-'
-                   + str(bins_corr[j + 1]) for i in range(len(bins_slope)-1) for j in range(len(bins_corr)-1)]
-        list_bin_slope = [(bins_slope[i]+(bins_slope[i+1]-bins_slope[i])/2) for i in range(len(bins_slope)-1) for j in range(len(bins_corr)-1)]
-        list_bin_corr = [(bins_corr[j]+(bins_corr[j+1]-bins_corr[j])/2) for i in range(len(bins_slope)-1) for j in range(len(bins_corr)-1)]
-
+        list_id = ['slope: ' + str(bins_slope[i]) + '-' + str(bins_slope[i + 1]) + ',corr:' + str(bins_corr[j]) + '-'
+                   + str(bins_corr[j + 1]) for i in range(len(bins_slope) - 1) for j in range(len(bins_corr) - 1)]
+        list_bin_slope = [(bins_slope[i] + (bins_slope[i + 1] - bins_slope[i]) / 2) for i in range(len(bins_slope) - 1)
+                          for j in range(len(bins_corr) - 1)]
+        list_bin_corr = [(bins_corr[j] + (bins_corr[j + 1] - bins_corr[j]) / 2) for i in range(len(bins_slope) - 1) for
+                         j in range(len(bins_corr) - 1)]
 
     df = pd.DataFrame()
-    df = df.assign(bin_slope=list_bin_slope, bin_corr=list_bin_corr,nmad=list_nmad, std=list_std, nsamp = list_ns, id = list_id)
+    df = df.assign(bin_slope=list_bin_slope, bin_corr=list_bin_corr, nmad=list_nmad, std=list_std, nsamp=list_ns,
+                   id=list_id)
 
     df.to_csv(outfile)
 
-def get_var_by_bin(ds,ds_arr,arr_vals,bin_vals,outfile,inc_mask=None,exc_mask=None,rast_cube_mask=False):
 
+def get_var_by_bin(ds, ds_arr, arr_vals, bin_vals, outfile, inc_mask=None, exc_mask=None, rast_cube_mask=False):
     ref_arr = ds.variables['ref_z'].values
 
-    dh = ds_arr - ref_arr[None,:,:]
+    dh = ds_arr - ref_arr[None, :, :]
 
     mask = np.ones(np.shape(ref_arr), dtype=bool)
     if inc_mask is not None:
@@ -546,7 +565,7 @@ def get_var_by_bin(ds,ds_arr,arr_vals,bin_vals,outfile,inc_mask=None,exc_mask=No
     if exc_mask is not None:
         mask = np.logical_and(~get_stack_mask(exc_mask, ds), mask)
 
-    mask_init = np.logical_and(mask[None,:,:] * np.ones(np.shape(dh)[0],dtype=bool)[:,None,None],np.isfinite(dh))
+    mask_init = np.logical_and(mask[None, :, :] * np.ones(np.shape(dh)[0], dtype=bool)[:, None, None], np.isfinite(dh))
 
     df_all = pd.DataFrame()
     for i in range(len(bin_vals) - 1):
@@ -559,17 +578,18 @@ def get_var_by_bin(ds,ds_arr,arr_vals,bin_vals,outfile,inc_mask=None,exc_mask=No
             arr_mask = None
             cube_mask = np.logical_and(np.abs(arr_vals) >= bin_vals[i], np.abs(arr_vals) < bin_vals[i + 1])
 
-        nmd, ns, std = estimate_var(dh, mask_init, arr_mask=arr_mask,cube_mask=cube_mask, nsamp=10000)
+        nmd, ns, std = estimate_var(dh, mask_init, arr_mask=arr_mask, cube_mask=cube_mask, nsamp=10000)
 
         bin_id = str(bin_vals[i]) + '-' + str(bin_vals[i + 1])
         df = pd.DataFrame()
-        df = df.assign(nmad=[nmd], std=[std], bin_val=[bin_vals[i]+0.5*(bin_vals[i+1]-bin_vals[i])], nsamp = [ns], id = [bin_id])
+        df = df.assign(nmad=[nmd], std=[std], bin_val=[bin_vals[i] + 0.5 * (bin_vals[i + 1] - bin_vals[i])], nsamp=[ns],
+                       id=[bin_id])
         df_all = df_all.append(df, ignore_index=True)
 
     df_all.to_csv(outfile)
 
-def estimate_var(dh,mask_cube,arr_mask=None,cube_mask=None,nsamp=100000):
 
+def estimate_var(dh, mask_cube, arr_mask=None, cube_mask=None, nsamp=100000):
     """
     Estimation of elevation variance from data cube of difference to reference elevations
 
@@ -586,29 +606,31 @@ def estimate_var(dh,mask_cube,arr_mask=None,cube_mask=None,nsamp=100000):
 
     # rasterize mask
     if arr_mask is not None:
-        mask_cube = np.logical_and(mask_cube,arr_mask[None,:,:] * np.ones(np.shape(dh)[0],dtype=bool)[:,None,None])
+        mask_cube = np.logical_and(mask_cube,
+                                   arr_mask[None, :, :] * np.ones(np.shape(dh)[0], dtype=bool)[:, None, None])
 
     if cube_mask is not None:
-        mask_cube = np.logical_and(mask_cube,cube_mask)
+        mask_cube = np.logical_and(mask_cube, cube_mask)
 
     print('Selecting a subsample of ' + str(nsamp) + ' points...')
-    #sample a subset (usually on stable terrain)
+    # sample a subset (usually on stable terrain)
     max_samp = np.count_nonzero(mask_cube)
     index = np.where(mask_cube)
     final_nsamp = min(max_samp, nsamp)
     subset = np.random.choice(max_samp, final_nsamp, replace=False)
-    index_subset = (index[0][subset], index[1][subset],index[2][subset])
+    index_subset = (index[0][subset], index[1][subset], index[2][subset])
     mask_subset = np.zeros(np.shape(mask_cube), dtype=np.bool)
     mask_subset[index_subset] = True
 
     sub_dh = dh[mask_subset]
 
-    print('Elapsed for bin: '+str(time.time()-start))
+    print('Elapsed for bin: ' + str(time.time() - start))
 
     return nmad(sub_dh), final_nsamp, np.nanstd(sub_dh)
 
-def manual_refine_sampl_temporal_vgm(fn_stack,fn_ref_dem,out_dir,filt_ref='both',max_dhdt=[-50,50]
-                                     ,ref_dem_date=np.datetime64('2015-01-01'),inc_mask=None,gla_mask=None,nproc=1):
+
+def manual_refine_sampl_temporal_vgm(fn_stack, fn_ref_dem, out_dir, filt_ref='both', max_dhdt=[-50, 50]
+                                     , ref_dem_date=np.datetime64('2015-01-01'), inc_mask=None, gla_mask=None, nproc=1):
     """
     Full sampling method of temporal variogram from stacks of DEMs: pre-filtering of data, binning of external variables and sampling of temporal variograms
 
@@ -626,11 +648,11 @@ def manual_refine_sampl_temporal_vgm(fn_stack,fn_ref_dem,out_dir,filt_ref='both'
     """
 
     # let's look at a few possible dependencies for this temporal vgm
-    print('Working on '+fn_stack)
+    print('Working on ' + fn_stack)
 
     ds = xr.open_dataset(fn_stack)
     ds.load()
-    start=time.time()
+    start = time.time()
 
     print('Original temporal size of stack is ' + str(ds.time.size))
     print('Original spatial size of stack is ' + str(ds.x.size) + ',' + str(ds.y.size))
@@ -657,14 +679,15 @@ def manual_refine_sampl_temporal_vgm(fn_stack,fn_ref_dem,out_dir,filt_ref='both'
     if fn_ref_dem is not None:
         assert filt_ref in ['min_max', 'time', 'both'], "fn_ref must be one of: min_max, time, both"
         ds_arr_filt = prefilter_stack(ds, ds_arr, fn_ref_dem, t_vals, filt_ref=filt_ref, ref_dem_date=ref_dem_date,
-                                 max_dhdt=max_dhdt, nproc=nproc)
+                                      max_dhdt=max_dhdt, nproc=nproc)
         print('Elapsed time is ' + str(time.time() - start))
 
-    fn_final = os.path.join(os.path.dirname(fn_stack),os.path.splitext(os.path.basename(fn_stack))[0]+'_final.nc')
-    fn_dh =  os.path.join(os.path.dirname(fn_stack),os.path.splitext(os.path.basename(fn_stack))[0]+'_final_dh.tif')
-    #TODO: remove when all those are corrected
+    fn_final = os.path.join(os.path.dirname(fn_stack), os.path.splitext(os.path.basename(fn_stack))[0] + '_final.nc')
+    fn_dh = os.path.join(os.path.dirname(fn_stack), os.path.splitext(os.path.basename(fn_stack))[0] + '_final_dh.tif')
+    # TODO: remove when all those are corrected
     if not os.path.exists(fn_dh):
-        fn_dh = os.path.join(os.path.dirname(fn_stack),os.path.splitext(os.path.basename(fn_stack))[0]+'_final.nc_dh.tif')
+        fn_dh = os.path.join(os.path.dirname(fn_stack),
+                             os.path.splitext(os.path.basename(fn_stack))[0] + '_final.nc_dh.tif')
 
     ds_final = xr.open_dataset(fn_final)
     arr_slope = ds_final.slope.values
@@ -673,40 +696,41 @@ def manual_refine_sampl_temporal_vgm(fn_stack,fn_ref_dem,out_dir,filt_ref='both'
     tmp_dem = GeoImg(fn_ref_dem)
     ref_dem = tmp_dem.reproject(tmp_geo).img
 
-    bins_slope = np.arange(0,60,10)
-    bins_dh = [-300,-200,-100,-50,-20,-10,0,10,20,50]
+    bins_slope = np.arange(0, 60, 10)
+    bins_dh = [-300, -200, -100, -50, -20, -10, 0, 10, 20, 50]
     # bins_dh=[-20,-10]
-    bins_elev = np.arange(np.nanmin(ref_dem) - np.nanmin(ref_dem) % 200, np.nanmax(ref_dem),200)
+    bins_elev = np.arange(np.nanmin(ref_dem) - np.nanmin(ref_dem) % 200, np.nanmax(ref_dem), 200)
 
-    fn_slope_tvar = os.path.join(out_dir,os.path.splitext(os.path.basename(fn_stack))[0]+'_slope_tvar.csv')
-    fn_dh_tvar = os.path.join(out_dir,os.path.splitext(os.path.basename(fn_stack))[0]+'_dh_tvar.csv')
-    fn_elev_tvar = os.path.join(out_dir,os.path.splitext(os.path.basename(fn_stack))[0]+'_elev_tvar.csv')
+    fn_slope_tvar = os.path.join(out_dir, os.path.splitext(os.path.basename(fn_stack))[0] + '_slope_tvar.csv')
+    fn_dh_tvar = os.path.join(out_dir, os.path.splitext(os.path.basename(fn_stack))[0] + '_dh_tvar.csv')
+    fn_elev_tvar = os.path.join(out_dir, os.path.splitext(os.path.basename(fn_stack))[0] + '_elev_tvar.csv')
 
-    get_vgm_by_bin(ds,ds_arr,arr_slope,bins_slope,fn_slope_tvar,inc_mask=gla_mask,nproc=nproc)
-    get_vgm_by_bin(ds,ds_arr,ref_dem,bins_elev,fn_elev_tvar,inc_mask=gla_mask,nproc=nproc)
-    get_vgm_by_bin(ds,ds_arr_filt,arr_dh,bins_dh,fn_dh_tvar,inc_mask=gla_mask,nproc=nproc)
+    get_vgm_by_bin(ds, ds_arr, arr_slope, bins_slope, fn_slope_tvar, inc_mask=gla_mask, nproc=nproc)
+    get_vgm_by_bin(ds, ds_arr, ref_dem, bins_elev, fn_elev_tvar, inc_mask=gla_mask, nproc=nproc)
+    get_vgm_by_bin(ds, ds_arr_filt, arr_dh, bins_dh, fn_dh_tvar, inc_mask=gla_mask, nproc=nproc)
 
 
-def get_vgm_by_bin(ds,ds_arr,arr_vals,bin_vals,outfile,inc_mask=None,exc_mask=None,nproc=1):
-
+def get_vgm_by_bin(ds, ds_arr, arr_vals, bin_vals, outfile, inc_mask=None, exc_mask=None, nproc=1):
     df_all = pd.DataFrame()
-    for i in range(len(bin_vals)-1):
+    for i in range(len(bin_vals) - 1):
+        print('Binning from ' + str(bin_vals[i]) + ' to ' + str(bin_vals[i + 1]))
 
-        print('Binning from '+str(bin_vals[i])+' to '+str(bin_vals[i+1]))
-
-        add_mask = np.logical_and(arr_vals >= bin_vals[i],arr_vals<bin_vals[i+1])
-        lags, vmean, vstd = estimate_vgm(ds,ds_arr,inc_mask=inc_mask,exc_mask=exc_mask,rast_mask=add_mask,nproc=nproc,nsamp=10000)
-        id = str(bin_vals[i]) + '-' + str(bin_vals[i+1])
+        add_mask = np.logical_and(arr_vals >= bin_vals[i], arr_vals < bin_vals[i + 1])
+        lags, vmean, vstd = estimate_vgm(ds, ds_arr, inc_mask=inc_mask, exc_mask=exc_mask, rast_mask=add_mask,
+                                         nproc=nproc, nsamp=10000)
+        id = str(bin_vals[i]) + '-' + str(bin_vals[i + 1])
 
         df = pd.DataFrame()
         df = df.assign(lags=lags, vmean=vmean, vstd=vstd)
-        df = df.assign(id=[id]*len(df.index), bin_val=[bin_vals[i]+0.5*(bin_vals[i+1]-bin_vals[i])]*len(df.index))
-        df_all = df_all.append(df,ignore_index=True)
+        df = df.assign(id=[id] * len(df.index),
+                       bin_val=[bin_vals[i] + 0.5 * (bin_vals[i + 1] - bin_vals[i])] * len(df.index))
+        df_all = df_all.append(df, ignore_index=True)
 
     df_all.to_csv(outfile)
 
 
-def estimate_vgm(ds,ds_arr,inc_mask=None,exc_mask=None,rast_mask=None,nsamp=10000,tstep=0.25,lag_cutoff=None,min_obs=8,nproc=1,pack_size=50):
+def estimate_vgm(ds, ds_arr, inc_mask=None, exc_mask=None, rast_mask=None, nsamp=10000, tstep=0.25, lag_cutoff=None,
+                 min_obs=8, nproc=1, pack_size=50):
     """
     Aggregate 1D temporal variograms for multiple stack pixels: random sampling within a inclusion mask
 
@@ -727,29 +751,30 @@ def estimate_vgm(ds,ds_arr,inc_mask=None,exc_mask=None,rast_mask=None,nsamp=1000
     # estimate 1D variogram for multiple pixels: random sampling within mask
 
     # rasterize mask
-    mask = np.ones(np.shape(ds_arr[0]),dtype=bool)
+    mask = np.ones(np.shape(ds_arr[0]), dtype=bool)
 
     if inc_mask is not None:
-        mask = np.logical_and(get_stack_mask(inc_mask, ds),mask)
+        mask = np.logical_and(get_stack_mask(inc_mask, ds), mask)
 
     if exc_mask is not None:
         mask = np.logical_and(~get_stack_mask(exc_mask, ds), mask)
 
     if rast_mask is not None:
-        mask = np.logical_and(rast_mask,mask)
+        mask = np.logical_and(rast_mask, mask)
 
     # count number of valid temporal observation for each pixel
-    nb_arr = np.nansum(~np.isnan(ds_arr),axis=0)
-    mask = np.logical_and(mask,nb_arr>=min_obs)
+    nb_arr = np.nansum(~np.isnan(ds_arr), axis=0)
+    mask = np.logical_and(mask, nb_arr >= min_obs)
 
-    print('Selecting a subsample of '+str(nsamp)+' points with at least '+str(min_obs)+ ' observations in time...')
+    print(
+        'Selecting a subsample of ' + str(nsamp) + ' points with at least ' + str(min_obs) + ' observations in time...')
     # sample a subset
     max_samp = np.count_nonzero(mask)
     index = np.where(mask)
-    final_nsamp = min(max_samp,nsamp)
-    subset = np.random.choice(max_samp,final_nsamp,replace=False)
-    index_subset=(index[0][subset],index[1][subset])
-    mask_subset = np.zeros(np.shape(mask),dtype=np.bool)
+    final_nsamp = min(max_samp, nsamp)
+    subset = np.random.choice(max_samp, final_nsamp, replace=False)
+    index_subset = (index[0][subset], index[1][subset])
+    mask_subset = np.zeros(np.shape(mask), dtype=np.bool)
     mask_subset[index_subset] = True
 
     ds_samp = ds_arr[:, mask_subset]
@@ -769,25 +794,26 @@ def estimate_vgm(ds,ds_arr,inc_mask=None,exc_mask=None,rast_mask=None,nsamp=1000
     if lag_cutoff is None:
         lag_cutoff = np.max(t_scale) - np.min(t_scale)
 
-    lags = np.arange(0, lag_cutoff, tstep) + 0.5*tstep
+    lags = np.arange(0, lag_cutoff, tstep) + 0.5 * tstep
 
     # get variance/lags and number of pairwise/lags for each pixel
 
-    #old method, changing for median more robust to outliers
+    # old method, changing for median more robust to outliers
     # vdata = np.zeros((len(lags), final_nsamp))
     # pdata = np.zeros((len(lags), final_nsamp))
-    if nproc==1:
+    if nproc == 1:
         print('Drawing variograms with 1 core...')
         for i in np.arange(final_nsamp):
-            #old method, changing for median more robust to outliers
+            # old method, changing for median more robust to outliers
             # sv = vgm_1d((t_scale, ds_samp[:,i].flatten(),lag_cutoff,tstep))
             # vdata[:,i]=sv[0]
             # pdata[:,i]=sv[1]
-            vdata = vgm_1d((t_scale, ds_samp[:,i].flatten(),lag_cutoff,tstep))
+            vdata = vgm_1d((t_scale, ds_samp[:, i].flatten(), lag_cutoff, tstep))
     else:
-        print('Drawing variograms with '+str(nproc)+ ' cores...')
+        print('Drawing variograms with ' + str(nproc) + ' cores...')
         pool = mp.Pool(nproc, maxtasksperchild=1)
-        argsin = [(t_scale,ds_samp[:,i:min(i+pack_size,final_nsamp)],k,lag_cutoff,tstep) for k ,i in enumerate(np.arange(0,final_nsamp,pack_size))]
+        argsin = [(t_scale, ds_samp[:, i:min(i + pack_size, final_nsamp)], k, lag_cutoff, tstep) for k, i in
+                  enumerate(np.arange(0, final_nsamp, pack_size))]
         outputs = pool.map(wrapper_vgm1d_med, argsin, chunksize=1)
         pool.close()
         pool.join()
@@ -795,11 +821,11 @@ def estimate_vgm(ds,ds_arr,inc_mask=None,exc_mask=None,rast_mask=None,nsamp=1000
         zip_out = list(zip(*outputs))
 
         vdata = []
-        if len(outputs)>0:
+        if len(outputs) > 0:
             for i in range(len(outputs[0])):
                 vdata.append(np.concatenate(zip_out[i]))
 
-        #old method, changing for median more robust to outliers
+        # old method, changing for median more robust to outliers
         # for k, i in enumerate(np.arange(0,final_nsamp,pack_size)):
         #     vdata[:, i:min(i+pack_size,final_nsamp)]=zip_out[0][k]
         #     pdata[:, i:min(i+pack_size,final_nsamp)]=zip_out[1][k]
@@ -808,20 +834,20 @@ def estimate_vgm(ds,ds_arr,inc_mask=None,exc_mask=None,rast_mask=None,nsamp=1000
     # mean variogram accounting for the number of pairwise comparison in each pixel
     # vmean = np.nansum(vdata * pdata,axis=1) / ptot
     # vmean = np.nanmedian(vdata,axis=1)
-    #'rough' std: between pixels, not accounting for the number of pairwise observation
+    # 'rough' std: between pixels, not accounting for the number of pairwise observation
     # vstd = np.nanstd(vdata,axis=1)
 
     vmean = np.zeros(len(lags)) * np.nan
     vstd = np.zeros(len(lags)) * np.nan
-    if len(vdata)>0:
+    if len(vdata) > 0:
         for i in range(len(lags)):
             vmean[i] = np.nanmedian(vdata[i])
             vstd[i] = nmad(vdata[i])
 
     return lags, vmean, vstd
 
-def plot_vgm(lags,vmean,vstd):
 
+def plot_vgm(lags, vmean, vstd):
     fig, ax = plt.subplots(1)
     ax.plot(lags, vmean, lw=2, label='mean', color='blue')
     ax.fill_between(lags, vmean + vstd, vmean - vstd, facecolor='blue', alpha=0.5)
@@ -832,6 +858,7 @@ def plot_vgm(lags,vmean,vstd):
     ax.grid()
     # plt.savefig(fn_fig, dpi=600)
     plt.show()
+
 
 def parse_epsg(wkt):
     return int(''.join(filter(lambda x: x.isdigit(), wkt.split(',')[-1])))
@@ -960,12 +987,12 @@ def interp_data(t, y, sig, interp_t):
     s_ = interp1d(t, sig)
     return y_(interp_t), s_(interp_t)
 
-def robust_wls(t_vals,data,ferr):
 
+def robust_wls(t_vals, data, ferr):
     n_out = 1
     while n_out > 0:
         beta1, beta0, incert_slope, _, _ = wls_matrix(t_vals, data, 1. / ferr,
-                                                  conf_slope=0.99)
+                                                      conf_slope=0.99)
         trend = beta1 * t_vals + beta0
         std_nmad_rat = np.std(data - trend) / nmad(data - trend)
         if std_nmad_rat > 20:
@@ -1000,6 +1027,7 @@ def detrend(t_vals, data, ferr):
 
     return reg
 
+
 def gpr(data, t_vals, uncert, t_pred, opt=False, kernel=None, not_stable=True, detrend_ls=False, loop_detrend=False):
     """
     Gaussian Process regression wrapper
@@ -1022,7 +1050,7 @@ def gpr(data, t_vals, uncert, t_pred, opt=False, kernel=None, not_stable=True, d
         return np.nan * np.zeros(t_pred.shape), np.nan * np.zeros(t_pred.shape), np.nan * np.zeros(data.shape)
 
     data_vals = data[np.isfinite(data)]
-    err_vals = uncert[np.isfinite(data)]**2
+    err_vals = uncert[np.isfinite(data)] ** 2
     time_vals = t_vals[np.isfinite(data)]
 
     # by default, no optimizer: applying GPR with defined kernels
@@ -1041,7 +1069,7 @@ def gpr(data, t_vals, uncert, t_pred, opt=False, kernel=None, not_stable=True, d
 
     num_finite = data_vals.size
     good_vals = np.isfinite(data_vals)
-    max_z_score = [20,12,9,6,4]
+    max_z_score = [20, 12, 9, 6, 4]
 
     while (n_out > 0 or final_fit == 0) and num_finite >= 2:
 
@@ -1050,12 +1078,12 @@ def gpr(data, t_vals, uncert, t_pred, opt=False, kernel=None, not_stable=True, d
 
             # weighted least squares
             beta1, beta0, incert_slope, _, _ = wls_matrix(time_vals[good_vals], data_vals[good_vals],
-                                                             1. / err_vals[good_vals], conf_slope=0.99)
+                                                          1. / err_vals[good_vals], conf_slope=0.99)
 
             # standardized dispersion from linearity (standardized RMSE)
             if ~np.isnan(beta1) and ~np.isnan(beta0):
                 res_stdized = np.sqrt(np.mean(
-                        (data_vals[good_vals] - (beta0 + beta1 * time_vals[good_vals])) ** 2 / err_vals[good_vals]))
+                    (data_vals[good_vals] - (beta0 + beta1 * time_vals[good_vals])) ** 2 / err_vals[good_vals]))
                 res = np.sqrt(np.mean((data_vals[good_vals] - (beta0 + beta1 * time_vals[good_vals])) ** 2))
             else:
                 res_stdized = 1
@@ -1071,10 +1099,10 @@ def gpr(data, t_vals, uncert, t_pred, opt=False, kernel=None, not_stable=True, d
                 # first iteration, let it filter out very large outliers
                 if niter == 0:
                     base_var = 100.
-                    #adapt variance to try not to filter out surges before the final fit with local linear kernel
+                    # adapt variance to try not to filter out surges before the final fit with local linear kernel
                 elif np.count_nonzero(ind_first) >= 5 and np.count_nonzero(ind_last) >= 5:
                     diff = np.abs(np.mean(data_vals[ind_first]) - np.mean(data_vals[ind_last]))
-                    diff_std = np.sqrt(np.std(data_vals[ind_first])**2 + np.std(data_vals[ind_last])**2)
+                    diff_std = np.sqrt(np.std(data_vals[ind_first]) ** 2 + np.std(data_vals[ind_last]) ** 2)
                     if diff - diff_std > 0:
                         base_var = 50 + (diff - diff_std) ** 2 / 2
                     else:
@@ -1092,12 +1120,12 @@ def gpr(data, t_vals, uncert, t_pred, opt=False, kernel=None, not_stable=True, d
                     period_nonlinear = 100.
 
             # linear kernel + periodic kernel + local kernel
-            k1 = PairwiseKernel(1, metric='linear') # linear kernel
+            k1 = PairwiseKernel(1, metric='linear')  # linear kernel
             k2 = C(30) * ESS(length_scale=1, periodicity=1)  # periodic kernel
             # k3 =  #local kernel
             # k3 = C(50) * RBF(1)
-            k3 = C(base_var*0.6) * RBF(0.75) + C(base_var*0.3)* RBF(1.5) + C(base_var*0.1)*RBF(3)
-            k4 = PairwiseKernel(1, metric='linear') * C(nonlin_var) * RQ(period_nonlinear,10)
+            k3 = C(base_var * 0.6) * RBF(0.75) + C(base_var * 0.3) * RBF(1.5) + C(base_var * 0.1) * RBF(3)
+            k4 = PairwiseKernel(1, metric='linear') * C(nonlin_var) * RQ(period_nonlinear, 10)
             kern = k1 + k2
             if not_stable:
                 # k3 =  #non-linear kernel
@@ -1118,7 +1146,8 @@ def gpr(data, t_vals, uncert, t_pred, opt=False, kernel=None, not_stable=True, d
                     # try to remove a linear fit from the data before we fit, then add it back in when we're done.
                     reg = detrend(detr_time_vals[good_vals], data_vals[good_vals], err_vals[good_vals])
                 except:
-                    return np.nan * np.zeros(t_pred.shape), np.nan * np.zeros(t_pred.shape), np.nan * np.zeros(data.shape)
+                    return np.nan * np.zeros(t_pred.shape), np.nan * np.zeros(t_pred.shape), np.nan * np.zeros(
+                        data.shape)
 
                 l_trend = reg.predict(detr_time_vals.reshape(-1, 1)).squeeze()
                 if not loop_detrend:
@@ -1138,7 +1167,7 @@ def gpr(data, t_vals, uncert, t_pred, opt=False, kernel=None, not_stable=True, d
         z_score = np.abs(detr_data_vals - y_) / s_
 
         isin = z_score[np.isfinite(z_score)] < 4
-        #we continue the loop if there is a least one value outside 4 stds
+        # we continue the loop if there is a least one value outside 4 stds
         n_out = np.count_nonzero(~isin)
 
         # good elevation values can also be outside 4stds because of bias in the first fits
@@ -1153,10 +1182,10 @@ def gpr(data, t_vals, uncert, t_pred, opt=False, kernel=None, not_stable=True, d
         niter += 1
 
         # no need to filter outliers for final fit
-        if final_fit ==1:
+        if final_fit == 1:
             n_out = 0
         # if we have no outliers outside 4 std, initialize back values to jump directly to the final fitting step
-        if n_out == 0 and final_fit == 0 and niter>1:
+        if n_out == 0 and final_fit == 0 and niter > 1:
             n_out = 1
             final_fit = 1
             niter = len(max_z_score) - 1
@@ -1194,7 +1223,7 @@ def ls(subarr, t_vals, err, weigh, filt_ls=False, conf_filt=0.99):
 
     T, Y, X = subarr.shape
 
-    #converting time values
+    # converting time values
     y0 = t_vals[0].astype('datetime64[D]').astype(object).year
     y1 = t_vals[-1].astype('datetime64[D]').astype(object).year + 1.1
     total_delta = np.datetime64('{}-01-01'.format(int(y1))) - np.datetime64('{}-01-01'.format(int(y0)))
@@ -1203,8 +1232,8 @@ def ls(subarr, t_vals, err, weigh, filt_ls=False, conf_filt=0.99):
 
     z_mat = subarr.reshape(T, Y * X)
     t_mat = np.array([time_vals, ] * Y * X).T
-    w_mat = err.reshape(T, Y*X)
-    #old error
+    w_mat = err.reshape(T, Y * X)
+    # old error
     # if weigh:
     #     w_mat = np.array([1. / err ** 2, ] * Y * X).T
 
@@ -1239,9 +1268,10 @@ def ls(subarr, t_vals, err, weigh, filt_ls=False, conf_filt=0.99):
 
     filt_subarr = np.isfinite(z_mat.reshape(T, Y, X))
 
-    outarr = np.stack((slope, interc, slope_sig, nb_dem, date_min, date_max),axis=0)
+    outarr = np.stack((slope, interc, slope_sig, nb_dem, date_min, date_max), axis=0)
 
     return outarr, filt_subarr
+
 
 # @jit
 def gpr_wrapper(argsin):
@@ -1249,16 +1279,17 @@ def gpr_wrapper(argsin):
     start = time.time()
 
     Y, X = z.shape[1:3]
-    outarr = np.nan * np.zeros((new_t.size * 2 + z.shape[0],Y, X))
+    outarr = np.nan * np.zeros((new_t.size * 2 + z.shape[0], Y, X))
     # pixel by pixel
     for x in range(X):
         for y in range(Y):
             if uns_arr is not None:
-                uns_tag = uns_arr[0,y,x]
+                uns_tag = uns_arr[0, y, x]
             else:
                 uns_tag = True
-            uncert = err[:,y,x]
-            tmp_y, tmp_sig, tmp_filt = gpr(z[:, y, x], t_vals, uncert, new_t, opt=opt, not_stable=uns_tag, kernel=kernel)[0:3]
+            uncert = err[:, y, x]
+            tmp_y, tmp_sig, tmp_filt = gpr(z[:, y, x], t_vals, uncert, new_t, opt=opt, not_stable=uns_tag,
+                                           kernel=kernel)[0:3]
             out = np.concatenate((tmp_y, tmp_sig, tmp_filt), axis=0)
             outarr[:, y, x] = out
     elaps = time.time() - start
@@ -1266,21 +1297,22 @@ def gpr_wrapper(argsin):
     print('Done with block {}, elapsed time {}.'.format(i, elaps))
     return outarr
 
-def gpr_dask_wrapper(z,err,t_vals,new_t,opt=False,kernel=None, uns_arr=None):
 
+def gpr_dask_wrapper(z, err, t_vals, new_t, opt=False, kernel=None, uns_arr=None):
     start = time.time()
 
     Y, X = z.shape[0:2]
-    outarr = np.nan * np.zeros((Y, X,new_t.size * 2 + z.shape[2],))
+    outarr = np.nan * np.zeros((Y, X, new_t.size * 2 + z.shape[2],))
     # pixel by pixel
     for x in range(X):
         for y in range(Y):
             if uns_arr is not None:
-                uns_tag = uns_arr[y,x,0]
+                uns_tag = uns_arr[y, x, 0]
             else:
                 uns_tag = True
-            uncert = err[y,x,:]
-            tmp_y, tmp_sig, tmp_filt = gpr(z[y, x, :], t_vals, uncert, new_t, opt=opt, not_stable=uns_tag, kernel=kernel)[0:3]
+            uncert = err[y, x, :]
+            tmp_y, tmp_sig, tmp_filt = gpr(z[y, x, :], t_vals, uncert, new_t, opt=opt, not_stable=uns_tag,
+                                           kernel=kernel)[0:3]
             out = np.concatenate((tmp_y, tmp_sig, tmp_filt), axis=0)
             outarr[y, x, :] = out
     elaps = time.time() - start
@@ -1288,13 +1320,14 @@ def gpr_dask_wrapper(z,err,t_vals,new_t,opt=False,kernel=None, uns_arr=None):
     print('Done with block, elapsed time {}.'.format(elaps))
     return outarr
 
-def gpr_dask(z,err,time_vals,new_t):
 
-    part_fun = functools.partial(gpr_dask_wrapper,t_vals=time_vals,new_t=new_t)
+def gpr_dask(z, err, time_vals, new_t):
+    part_fun = functools.partial(gpr_dask_wrapper, t_vals=time_vals, new_t=new_t)
 
-    return xr.apply_ufunc(part_fun,z,err,input_core_dims=[['time'],['time']],output_core_dims=[['new_time']],
-                          output_sizes={'new_time':2*len(new_t)+len(time_vals)},
-                          dask='parallelized',output_dtypes=[float],join='outer')
+    return xr.apply_ufunc(part_fun, z, err, input_core_dims=[['time'], ['time']], output_core_dims=[['new_time']],
+                          output_sizes={'new_time': 2 * len(new_t) + len(time_vals)},
+                          dask='parallelized', output_dtypes=[float], join='outer')
+
 
 @jit
 def ls_wrapper(argsin):
@@ -1308,7 +1341,7 @@ def ls_wrapper(argsin):
 
 
 def splitter(img, nblocks):
-    #manually split a datacube for parallel computing
+    # manually split a datacube for parallel computing
 
     split1 = np.array_split(img, nblocks[0], axis=1)
     split2 = [np.array_split(im, nblocks[1], axis=2) for im in split1]
@@ -1317,7 +1350,7 @@ def splitter(img, nblocks):
 
 
 def stitcher(outputs, nblocks):
-    #manually stitch a datacube for parallel computing
+    # manually stitch a datacube for parallel computing
 
     stitched = []
     if np.array(nblocks).size == 1:
@@ -1329,38 +1362,41 @@ def stitcher(outputs, nblocks):
             stitched[i] = np.concatenate((stitched[i], outputs[outind]), axis=2)
     return np.concatenate(tuple(stitched), axis=1)
 
-def patchify(arr,nblocks,overlap):
-    #manually split with overlap a datacube for parallel computing
+
+def patchify(arr, nblocks, overlap):
+    # manually split with overlap a datacube for parallel computing
 
     overlap = int(np.floor(overlap))
     patches = []
     nx, ny = np.shape(arr)
     nx_sub = nx // nblocks[0]
     ny_sub = ny // nblocks[1]
-    split = [[nx_sub*i,min(nx_sub*(i+1),nx),ny_sub*j,min(ny_sub*(j+1),ny)] for i in range(nblocks[0]+1) for j in range(nblocks[1]+1)]
-    over = [[max(0,l[0]-overlap),min(nx,l[1]+overlap),max(0,l[2]-overlap),min(l[3]+overlap,ny)] for l in split]
+    split = [[nx_sub * i, min(nx_sub * (i + 1), nx), ny_sub * j, min(ny_sub * (j + 1), ny)] for i in
+             range(nblocks[0] + 1) for j in range(nblocks[1] + 1)]
+    over = [[max(0, l[0] - overlap), min(nx, l[1] + overlap), max(0, l[2] - overlap), min(l[3] + overlap, ny)] for l in
+            split]
     inv = []
     for k in range(len(split)):
-
         x0, x1, y0, y1 = split[k]
         i0, i1, j0, j1 = over[k]
-        patches.append(arr[i0:i1,j0:j1])
-        inv.append([x0-i0,x1-i0,y0-j0,y1-j0])
+        patches.append(arr[i0:i1, j0:j1])
+        inv.append([x0 - i0, x1 - i0, y0 - j0, y1 - j0])
 
     return patches, inv, split
 
+
 def unpatchify(arr_shape, subarr, inv, split):
-    #manually stitch account for split overlap a datacube for parallel computing
+    # manually stitch account for split overlap a datacube for parallel computing
 
     out = np.zeros(arr_shape)
 
     for k, arr in enumerate(subarr):
-
         s = split[k]
         i = inv[k]
-        out[s[0]:s[1],s[2]:s[3]] = arr[i[0]:i[1],i[2]:i[3]]
+        out[s[0]:s[1], s[2]:s[3]] = arr[i[0]:i[1], i[2]:i[3]]
 
     return out
+
 
 def cube_to_stack(ds, out_cube, y0, nice_fit_t, outfile, slope_arr=None, ci=True, clobber=False, filt_bool=False):
     """
@@ -1382,7 +1418,7 @@ def cube_to_stack(ds, out_cube, y0, nice_fit_t, outfile, slope_arr=None, ci=True
 
     fit_cube = out_cube[:len(nice_fit_t), :, :]
 
-    img_shape=np.zeros(np.shape(fit_cube)[1:3])
+    img_shape = np.zeros(np.shape(fit_cube)[1:3])
 
     nco, to, xo, yo = st.create_nc(img_shape, outfile=outfile,
                                    clobber=clobber, t0=np.datetime64('{}-01-01'.format(y0)))
@@ -1399,9 +1435,10 @@ def cube_to_stack(ds, out_cube, y0, nice_fit_t, outfile, slope_arr=None, ci=True
     else:
         dt = 'i1'
         fill = False
-        fit_cube = np.array(fit_cube,dtype=bool)
+        fit_cube = np.array(fit_cube, dtype=bool)
 
-    zo = nco.createVariable('z', dt, ('time', 'y', 'x'), fill_value=fill, zlib=True, chunksizes=[500,min(150,ds.y.size),min(150,ds.x.size)])
+    zo = nco.createVariable('z', dt, ('time', 'y', 'x'), fill_value=fill, zlib=True,
+                            chunksizes=[500, min(150, ds.y.size), min(150, ds.x.size)])
     zo.units = 'meters'
     zo.long_name = 'Fit elevation above WGS84 ellipsoid'
     zo.grid_mapping = 'crs'
@@ -1412,7 +1449,8 @@ def cube_to_stack(ds, out_cube, y0, nice_fit_t, outfile, slope_arr=None, ci=True
 
     if ci:
         sig_cube = out_cube[len(nice_fit_t):, :, :]
-        fzo = nco.createVariable('z_ci', 'f4', ('time', 'y', 'x'), fill_value=-9999, zlib=True, chunksizes=[500,min(150,ds.y.size),min(150,ds.x.size)])
+        fzo = nco.createVariable('z_ci', 'f4', ('time', 'y', 'x'), fill_value=-9999, zlib=True,
+                                 chunksizes=[500, min(150, ds.y.size), min(150, ds.x.size)])
         fzo.units = 'meters'
         fzo.long_name = '68% confidence interval for elevation fit.'
         fzo.grid_mapping = 'crs'
@@ -1422,7 +1460,8 @@ def cube_to_stack(ds, out_cube, y0, nice_fit_t, outfile, slope_arr=None, ci=True
         fzo[:] = sig_cube
 
     if slope_arr is not None:
-        so = nco.createVariable('slope','f4', ('y','x'),fill_value=-9999, zlib=True, chunksizes=[min(150,ds.y.size),min(150,ds.x.size)])
+        so = nco.createVariable('slope', 'f4', ('y', 'x'), fill_value=-9999, zlib=True,
+                                chunksizes=[min(150, ds.y.size), min(150, ds.x.size)])
         so.units = 'degrees'
         so.long_name = 'median slope used to condition elevation uncertainties'
         so.grid_mapping = 'crs'
@@ -1435,9 +1474,9 @@ def cube_to_stack(ds, out_cube, y0, nice_fit_t, outfile, slope_arr=None, ci=True
 
 def arr_to_img(ds, out_arr, outfile):
     outfile_slope = os.path.join(os.path.dirname(outfile),
-                               os.path.splitext(os.path.basename(outfile))[0] + '_dh.tif')
+                                 os.path.splitext(os.path.basename(outfile))[0] + '_dh.tif')
     outfile_interc = os.path.join(os.path.dirname(outfile),
-                                 os.path.splitext(os.path.basename(outfile))[0] + '_interc.tif')
+                                  os.path.splitext(os.path.basename(outfile))[0] + '_interc.tif')
     outfile_sig = os.path.join(os.path.dirname(outfile),
                                os.path.splitext(os.path.basename(outfile))[0] + '_err.tif')
     outfile_nb = os.path.join(os.path.dirname(outfile),
@@ -1447,7 +1486,7 @@ def arr_to_img(ds, out_arr, outfile):
     outfile_dmax = os.path.join(os.path.dirname(outfile),
                                 os.path.splitext(os.path.basename(outfile))[0] + '_dmax.tif')
 
-    arr = st.make_geoimg(ds,band=0)
+    arr = st.make_geoimg(ds, band=0)
     arr.img = out_arr[0, :, :]
     arr.write(outfile_slope)
     arr.img = out_arr[1, :, :]
@@ -1461,11 +1500,13 @@ def arr_to_img(ds, out_arr, outfile):
     arr.img = out_arr[5, :, :]
     arr.write(outfile_dmax)
 
-#TODO: homogenize how REF DEM is provided: sometimes filename, sometimes raster, sometimes GeoImg... inadmissible :)
 
-def time_filter_ref(ds_arr, ref_arr, t_vals, ref_date, max_dhdt=[-50,50], base_thresh=100.):
+# TODO: homogenize how REF DEM is provided: sometimes filename, sometimes raster, sometimes GeoImg... inadmissible :)
+
+def time_filter_ref(ds_arr, ref_arr, t_vals, ref_date, max_dhdt=[-50, 50], base_thresh=100.):
     """
-    Temporal filtering of stacked DEMs with a reference DEM: removes all elevations outside a positive/negative linear elevation trend from the reference, with a base threshold
+    Temporal filtering of stacked DEMs with a reference DEM: removes all elevations outside a positive/negative linear
+     elevation trend from the reference, with a base threshold.
 
     :param ds_arr: Data cube of elevations
     :param ref_arr: Raster of reference DEM
@@ -1477,23 +1518,28 @@ def time_filter_ref(ds_arr, ref_arr, t_vals, ref_date, max_dhdt=[-50,50], base_t
     :return: ds_arr: Filtered data cube
     """
 
-    print('Adding base threshold of '+str(base_thresh)+' m around reference values.')
+    print('Adding base threshold of ' + str(base_thresh) + ' m around reference values.')
 
     delta_t = (ref_date - t_vals).astype('timedelta64[D]').astype(float) / 365.24
-    dh = ref_arr[None,:,:] - ds_arr
-    dt_arr = np.ones(dh.shape) * delta_t[:,None,None]
+    dh = ref_arr[None, :, :] - ds_arr
+    dt_arr = np.ones(dh.shape) * delta_t[:, None, None]
     # dh = ref_arr[:,:,None] - z_arr
     # dt_arr = np.ones(dh.shape) * delta_t[None,None,:]
     if np.array(max_dhdt).size == 1:
-        ds_arr[np.abs(dh) > base_thresh + np.abs(dt_arr)*max_dhdt] = np.nan
+        ds_arr[np.abs(dh) > base_thresh + np.abs(dt_arr) * max_dhdt] = np.nan
     else:
-        ds_arr[np.logical_or(np.logical_and(dt_arr < 0, np.logical_or(dh < - base_thresh + dt_arr*max_dhdt[1], dh > base_thresh + dt_arr*max_dhdt[0])),
-                             np.logical_and(dt_arr > 0, np.logical_or(dh > base_thresh + dt_arr*max_dhdt[1], dh < - base_thresh + dt_arr*max_dhdt[0])))] = np.nan
+        ds_arr[np.logical_or(np.logical_and(dt_arr < 0, np.logical_or(dh < - base_thresh + dt_arr * max_dhdt[1],
+                                                                      dh > base_thresh + dt_arr * max_dhdt[0])),
+                             np.logical_and(dt_arr > 0, np.logical_or(dh > base_thresh + dt_arr * max_dhdt[1],
+                                                                      dh < - base_thresh + dt_arr * max_dhdt[
+                                                                          0])))] = np.nan
     return ds_arr
 
-def dask_time_filter_ref(ds,ds_arr,ref_dem,t_vals,ref_date,max_dhdt=[-50,50],base_thresh=100.,nproc=1):
+
+def dask_time_filter_ref(ds, ds_arr, ref_dem, t_vals, ref_date, max_dhdt=[-50, 50], base_thresh=100., nproc=1):
     """
-       Dask wrapper of temporal filtering of stacked DEMs with a reference DEM: removes all elevations outside a positive/negative linear elevation trend from the reference, with a base threshold
+       Dask wrapper of temporal filtering of stacked DEMs with a reference DEM: removes all elevations outside a
+       positive/negative linear elevation trend from the reference, with a base threshold.
 
        :param ds_arr: Data cube of elevations
        :param ds_arr: Data cube of elevations
@@ -1509,51 +1555,55 @@ def dask_time_filter_ref(ds,ds_arr,ref_dem,t_vals,ref_date,max_dhdt=[-50,50],bas
 
     start = time.time()
     print('Setting up time filtering parallelized...')
-    part_tf = functools.partial(time_filter_ref,t_vals=t_vals,ref_date=ref_date,max_dhdt=max_dhdt,base_thresh=base_thresh)
+    part_tf = functools.partial(time_filter_ref, t_vals=t_vals, ref_date=ref_date, max_dhdt=max_dhdt,
+                                base_thresh=base_thresh)
 
-    z_dask = xr.DataArray(ds_arr,coords=[ds.time.values,ds.y.values,ds.x.values], dims=['time','y','x'])
+    z_dask = xr.DataArray(ds_arr, coords=[ds.time.values, ds.y.values, ds.x.values], dims=['time', 'y', 'x'])
     ref_arr = ref_dem.img
-    ref_dask = xr.DataArray(ref_arr,coords=[ds.y.values,ds.x.values],dims=['y','x'])
+    ref_dask = xr.DataArray(ref_arr, coords=[ds.y.values, ds.x.values], dims=['y', 'x'])
 
-    print('Time filter elapsed time is '+str(time.time() - start))
+    print('Time filter elapsed time is ' + str(time.time() - start))
     print('Chunking...')
-    z_chunk = z_dask.chunk({'x':200,'y':200})
-    ref_chunk = ref_dask.chunk({'x':200, 'y':200})
+    z_chunk = z_dask.chunk({'x': 200, 'y': 200})
+    ref_chunk = ref_dask.chunk({'x': 200, 'y': 200})
 
-    print('Time filter elapsed time is '+str(time.time() - start))
+    print('Time filter elapsed time is ' + str(time.time() - start))
     print('Chunking done, computing.')
 
-    sl = xr.apply_ufunc(part_tf,z_chunk,ref_chunk,input_core_dims=[['time'],[]],output_core_dims=[['time']],dask='parallelized',output_dtypes=[float])
-    filt_z_dask = sl.compute(num_workers=nproc,scheduler='processes')
+    sl = xr.apply_ufunc(part_tf, z_chunk, ref_chunk, input_core_dims=[['time'], []], output_core_dims=[['time']],
+                        dask='parallelized', output_dtypes=[float])
+    filt_z_dask = sl.compute(num_workers=nproc, scheduler='processes')
     filt_z_dask = filt_z_dask.transpose('time', 'y', 'x')
 
-    print('Time filter elapsed time is '+str(time.time() - start))
+    print('Time filter elapsed time is ' + str(time.time() - start))
 
     return filt_z_dask.values
+
 
 @jit_filter_function
 def nanmax(a):
     return np.nanmax(a)
 
+
 @jit_filter_function
 def nanmin(a):
     return np.nanmin(a)
 
-def wrapper_slope(argsin):
 
+def wrapper_slope(argsin):
     arr, in_met = argsin
 
     start = time.time()
     slope_list = []
 
-    #create input image
+    # create input image
     gt, proj, npix_x, npix_y = in_met
     drv = gdal.GetDriverByName('MEM')
     dst = drv.Create('', npix_x, npix_y, 1, gdal.GDT_Float32)
     sp = dst.SetProjection(proj)
     sg = dst.SetGeoTransform(gt)
     for i in range(np.shape(arr)[0]):
-        out_arr = np.copy(arr[i,:])
+        out_arr = np.copy(arr[i, :])
         out_arr[np.isnan(out_arr)] = -9999
         wa = dst.GetRasterBand(1).WriteArray(out_arr)
         md = dst.SetMetadata({'Area_or_point': 'Point'})
@@ -1567,12 +1617,12 @@ def wrapper_slope(argsin):
 
     slope_stack = np.stack(slope_list, axis=0)
 
-    print('Deriving slope stack in '+str(time.time()-start))
+    print('Deriving slope stack in ' + str(time.time() - start))
 
     return slope_stack
 
-def maxmin_disk_filter(argsin):
 
+def maxmin_disk_filter(argsin):
     arr, rad = argsin
 
     max_arr = filters.generic_filter(arr, nanmax, footprint=disk(rad))
@@ -1580,15 +1630,18 @@ def maxmin_disk_filter(argsin):
 
     return max_arr, min_arr
 
+
 @jit
 def robust_nanmax(a):
-    return np.nanpercentile(a,80)
+    return np.nanpercentile(a, 80)
     # return np.nanmax(a[np.abs(np.nanmedian(a)-a)<3*nmad(a)])
+
 
 @jit
 def robust_nanmin(a):
     # return np.nanmin(a[np.abs(np.nanmedian(a)-a)<3*nmad(a)])
-    return np.nanpercentile(a,20)
+    return np.nanpercentile(a, 20)
+
 
 def robust_maxmin_disk_filter(argsin):
     arr, rad = argsin
@@ -1599,10 +1652,10 @@ def robust_maxmin_disk_filter(argsin):
     return max_arr, min_arr
 
 
-def spat_filter_ref(ds_arr, ref_dem, cutoff_kern_size=500, cutoff_thr=20.,nproc=1):
-
+def spat_filter_ref(ds_arr, ref_dem, cutoff_kern_size=500, cutoff_thr=20., nproc=1):
     """
-    Spatial filtering of stacked DEMs with a reference DEM: removes all elevations smaller than the minimum or larger than the maximum reference elevation found within a circle of certain size, with a base threshold
+    Spatial filtering of stacked DEMs with a reference DEM: removes all elevations smaller than the minimum or larger
+    than the maximum reference elevation found within a circle of certain size, with a base threshold.
 
     :param ds_arr: Data cube of elevations
     :param ref_dem: GeoImg of reference DEM
@@ -1620,13 +1673,15 @@ def spat_filter_ref(ds_arr, ref_dem, cutoff_kern_size=500, cutoff_thr=20.,nproc=
     rad = int(np.floor(cutoff_kern_size / res))
 
     if nproc == 1:
-        print('Filtering min/max in radius of '+str(cutoff_kern_size)+'m, base threshold of '+str(cutoff_thr)+'m on 1 proc...')
+        print('Filtering min/max in radius of ' + str(cutoff_kern_size) + 'm, base threshold of ' + str(
+            cutoff_thr) + 'm on 1 proc...')
         max_arr, min_arr = maxmin_disk_filter((ref_arr, rad))
     else:
-        print('Filtering min/max in radius of '+str(cutoff_kern_size)+'m, base threshold of '+str(cutoff_thr)+'m on '+str(nproc)+' procs...')
-        nopt=int(np.floor(np.sqrt(nproc)))
-        nblocks=[nopt,nopt]
-        patches, inv, split = patchify(ref_arr,nblocks,rad)
+        print('Filtering min/max in radius of ' + str(cutoff_kern_size) + 'm, base threshold of ' + str(
+            cutoff_thr) + 'm on ' + str(nproc) + ' procs...')
+        nopt = int(np.floor(np.sqrt(nproc)))
+        nblocks = [nopt, nopt]
+        patches, inv, split = patchify(ref_arr, nblocks, rad)
 
         pool = mp.Pool(nproc, maxtasksperchild=1)
         argsin = [(p, rad) for i, p in enumerate(patches)]
@@ -1636,17 +1691,18 @@ def spat_filter_ref(ds_arr, ref_dem, cutoff_kern_size=500, cutoff_thr=20.,nproc=
 
         zip_out = list(zip(*outputs))
 
-        max_arr = unpatchify(np.shape(ref_arr),zip_out[0],inv,split)
-        min_arr = unpatchify(np.shape(ref_arr),zip_out[1],inv,split)
+        max_arr = unpatchify(np.shape(ref_arr), zip_out[0], inv, split)
+        min_arr = unpatchify(np.shape(ref_arr), zip_out[1], inv, split)
 
     for i in range(ds_arr.shape[0]):
         ds_arr[i, np.logical_or(ds_arr[i, :] > (max_arr + cutoff_thr), ds_arr[i, :] < (min_arr - cutoff_thr))] = np.nan
 
     return ds_arr
 
-def nanmedian_slope(slope_cube):
 
-    return np.nanmedian(slope_cube,axis=2)
+def nanmedian_slope(slope_cube):
+    return np.nanmedian(slope_cube, axis=2)
+
 
 def isel_merge_dupl_dates(ds):
     """
@@ -1656,7 +1712,7 @@ def isel_merge_dupl_dates(ds):
     :return: ds: merged Dataset
     """
 
-    #merge DEMs elevations (np.nanmean) for similar dates
+    # merge DEMs elevations (np.nanmean) for similar dates
     t_vals = ds.time.values
     dates_rm_dupli = sorted(list(set(list(t_vals))))
     ind_firstdate = []
@@ -1665,24 +1721,26 @@ def isel_merge_dupl_dates(ds):
     ds_filt = ds.isel(time=np.array(ind_firstdate))
     for i in range(len(dates_rm_dupli)):
         t_ind = (t_vals == dates_rm_dupli[i])
-        if len(t_ind)>1:
-            ds_filt.z.values[i,:] = np.nanmean(ds.z.values[t_ind,:],axis=0)
-            ds_filt.uncert.values[i,:] = np.nanmean(ds.uncert.values[t_ind, :])
+        if len(t_ind) > 1:
+            ds_filt.z.values[i, :] = np.nanmean(ds.z.values[t_ind, :], axis=0)
+            ds_filt.uncert.values[i, :] = np.nanmean(ds.uncert.values[t_ind, :])
 
-            #something is wrong when doing weighted mean...
+            # something is wrong when doing weighted mean...
 
-            #careful, np.nansum gives back zero for an axis full of NaNs
+            # careful, np.nansum gives back zero for an axis full of NaNs
             # mask_nan = np.all(np.isnan(ds.z.values[t_ind,:]),axis=0)
-            # ds_filt.z.values[i, :] = np.nansum(ds.z.values[t_ind, :] * 1./ds.uncert.values[t_ind,None,None]**2, axis=0)/np.nansum(1./ds.uncert.values[t_ind,None,None]**2, axis=0)
+            # ds_filt.z.values[i, :] = np.nansum(ds.z.values[t_ind, :] * 1./ds.uncert.values[t_ind,None,None]**2,
+            # axis=0)/ np.nansum(1./ds.uncert.values[t_ind,None,None]**2, axis=0)
             # ds_filt.z.values[i, mask_nan] = np.nan
-            # ds_filt.uncert.values[i] = np.nansum(ds.uncert.values[t_ind] * 1./ds.uncert.values[t_ind]**2) / np.nansum(1./ds.uncert.values[t_ind]**2)
+            # ds_filt.uncert.values[i] = np.nansum(ds.uncert.values[t_ind] * 1./ds.uncert.values[t_ind]**2) /
+            # np.nansum(1./ds.uncert.values[t_ind]**2)
 
     ds = ds_filt
 
     return ds
 
-def isel_maskout(ds,inc_mask):
 
+def isel_maskout(ds, inc_mask):
     """
     Mask out values out of shapefile and minimize spatial extent, remove void time steps (to decrease computing time)
 
@@ -1690,7 +1748,7 @@ def isel_maskout(ds,inc_mask):
     :return: ds: reduced Dataset
     """
 
-    #simplify extent to mask, mask out remaining masked pixels in the extent as NaNs, remove unusued time indexes
+    # simplify extent to mask, mask out remaining masked pixels in the extent as NaNs, remove unusued time indexes
     land_mask = get_stack_mask(inc_mask, ds)
     if np.count_nonzero(land_mask) > 0:
         ds, submask, slices = tt.sel_dc(ds, None, land_mask)
@@ -1702,14 +1760,15 @@ def isel_maskout(ds,inc_mask):
         non_void = np.count_nonzero(np.isfinite(ds_arr), axis=(1, 2)) > 0
         ds = ds.isel(time=non_void)
     else:
-        ds=None
+        ds = None
 
     return ds
 
-def constrain_var_slope_corr(ds,ds_arr,ds_corr,t_vals,uncert,fn_ref_dem=None,nproc=1):
 
+def constrain_var_slope_corr(ds, ds_arr, ds_corr, t_vals, uncert, fn_ref_dem=None, nproc=1):
     """
-    Given a data cube of stacked DEMs, a data cube of stereo-correlations and a per-DEM vector of co-registration RMSE: estimate a median slope and compute a data cube of elevation errors
+    Given a data cube of stacked DEMs, a data cube of stereo-correlations and a per-DEM vector of co-registration
+    RMSE: estimate a median slope and compute a data cube of elevation errors.
     (error dependance on the slope and stereo-correlation is defined independently)
     #TODO: allow for a user-defined function of error?
 
@@ -1759,7 +1818,7 @@ def constrain_var_slope_corr(ds,ds_arr,ds_corr,t_vals,uncert,fn_ref_dem=None,npr
     #                     output_dtypes=[float])
     # med_dask = sl.compute(num_workers=nproc, scheduler='processes')
     # med_slope = med_dask.values
-    med_slope = np.nanmedian(slope_arr,axis=0)
+    med_slope = np.nanmedian(slope_arr, axis=0)
 
     if fn_ref_dem is not None:
         tmp_dem = GeoImg(fn_ref_dem)
@@ -1770,11 +1829,11 @@ def constrain_var_slope_corr(ds,ds_arr,ds_corr,t_vals,uncert,fn_ref_dem=None,npr
     err_arr = np.ones(np.shape(ds_arr), dtype=np.float32)
     err_arr = err_arr * uncert[:, None, None] ** 2
 
-    #based on prior analysis of variance, this is a pretty good generic fit
-    slope_err = ((20 + 20*(100-ds_corr))* np.tan(med_slope * np.pi / 180)) ** 2
-    med_slope_arr = med_slope[None,:,:] * np.ones(np.shape(ds_arr)[0])[:,None,None]
-    slope_err[med_slope_arr>50] += ((med_slope_arr[med_slope_arr>50]-50)*5)**2
-    corr_err = (((100-ds_corr)/100)*20)**2.5
+    # based on prior analysis of variance, this is a pretty good generic fit
+    slope_err = ((20 + 20 * (100 - ds_corr)) * np.tan(med_slope * np.pi / 180)) ** 2
+    med_slope_arr = med_slope[None, :, :] * np.ones(np.shape(ds_arr)[0])[:, None, None]
+    slope_err[med_slope_arr > 50] += ((med_slope_arr[med_slope_arr > 50] - 50) * 5) ** 2
+    corr_err = (((100 - ds_corr) / 100) * 20) ** 2.5
     err_arr += slope_err
     err_arr += corr_err
     err_arr = np.sqrt(err_arr)
@@ -1785,10 +1844,10 @@ def constrain_var_slope_corr(ds,ds_arr,ds_corr,t_vals,uncert,fn_ref_dem=None,npr
     return err_arr, med_slope
 
 
-def prefilter_stack(ds,ds_arr,fn_ref_dem,t_vals,filt_ref='min_max',ref_dem_date=None,max_dhdt=[-50,50],nproc=1):
-
+def prefilter_stack(ds, ds_arr, fn_ref_dem, t_vals, filt_ref='min_max', ref_dem_date=None, max_dhdt=[-50, 50], nproc=1):
     """
-    Given a data cube of stacked DEMs and a reference DEM: condition a first-order spatial and temporal filtering of outliers
+    Given a data cube of stacked DEMs and a reference DEM: condition a first-order spatial and temporal
+    filtering of outliers.
 
     :param ds: xarray Dataset of datacube
     :param ds_arr: Data cube of elevations
@@ -1827,7 +1886,8 @@ def prefilter_stack(ds,ds_arr,fn_ref_dem,t_vals,filt_ref='min_max',ref_dem_date=
         print('Filtering spatially using min/max values in {}'.format(fn_ref_dem))
         ds_arr = spat_filter_ref(ds_arr, ref_dem, cutoff_kern_size=200, cutoff_thr=700., nproc=nproc)
         ds_arr = spat_filter_ref(ds_arr, ref_dem, cutoff_kern_size=500, cutoff_thr=500., nproc=nproc)
-        ds_arr = spat_filter_ref(ds_arr, ref_dem, cutoff_kern_size=2000, cutoff_thr=300., nproc=int(np.floor(nproc / 4)))
+        ds_arr = spat_filter_ref(ds_arr, ref_dem, cutoff_kern_size=2000, cutoff_thr=300.,
+                                 nproc=int(np.floor(nproc / 4)))
         print('Number of valid pixels after spatial filtering:' + str(np.count_nonzero(~np.isnan(ds_arr))))
 
         print('Elapsed time during prefiltering is ' + str(time.time() - start_prefilt))
@@ -1841,13 +1901,15 @@ def prefilter_stack(ds,ds_arr,fn_ref_dem,t_vals,filt_ref='min_max',ref_dem_date=
 
         print('Elapsed time during prefiltering is ' + str(time.time() - start_prefilt))
 
-
     return ds_arr
 
-def robust_wls_ref_filter_stack(ds, ds_arr,err_arr,t_vals,fn_ref_dem,ref_dem_date=np.datetime64('2013-01-01'),max_dhdt=[-50,50],nproc=1,cutoff_kern_size=1000,max_deltat_ref=2.,base_thresh=100.):
 
+def robust_wls_ref_filter_stack(ds, ds_arr, err_arr, t_vals, fn_ref_dem, ref_dem_date=np.datetime64('2013-01-01'),
+                                max_dhdt=[-50, 50], nproc=1, cutoff_kern_size=1000, max_deltat_ref=2.,
+                                base_thresh=100.):
     """
-    Given a data cube of stacked DEMs, of elevation errors and a reference DEM: condition a spatial and temporal filtering of outliers based on WLS linear trends
+    Given a data cube of stacked DEMs, of elevation errors and a reference DEM: condition a spatial and temporal
+    filtering of outliers based on WLS linear trends.
 
     :param ds: xarray Dataset of data cube
     :param ds_arr: Data cube of elevations
@@ -1868,21 +1930,21 @@ def robust_wls_ref_filter_stack(ds, ds_arr,err_arr,t_vals,fn_ref_dem,ref_dem_dat
 
     print('Performing WLS to condition filtering...')
 
-    #wls parameters
+    # wls parameters
     weig = True
     filt_ls = True
     conf_filt_ls = 0.99
 
-    #getting radius size
+    # getting radius size
     tmp_geo = st.make_geoimg(ds)
     tmp_dem = GeoImg(fn_ref_dem)
     ref_dem = tmp_dem.reproject(tmp_geo)
     ref_arr = ref_dem.img
-    #TODO: do not hardcore resolution
+    # TODO: do not hardcore resolution
     res = 100.
     rad = int(np.floor(cutoff_kern_size / res))
 
-    #wls
+    # wls
     if nproc == 1:
         print('Processing with 1 core...')
         out_arr, _ = ls_wrapper((ds_arr, 0, t_vals, err_arr, weig, filt_ls, conf_filt_ls))
@@ -1904,25 +1966,25 @@ def robust_wls_ref_filter_stack(ds, ds_arr,err_arr,t_vals,fn_ref_dem,ref_dem_dat
         pool.join()
 
         zip_out = list(zip(*outputs))
-        out_arr = stitcher(zip_out[0], (n_y_tiles, n_x_tiles))[0,:,:]
+        out_arr = stitcher(zip_out[0], (n_y_tiles, n_x_tiles))[0, :, :]
 
-    #removing large dhdt outliers
+    # removing large dhdt outliers
     # print('Writing to rasters for checking...')
     # dh_wls = ref_dem.copy()
     # dh_wls.img = out_arr
     # dh_wls.write('/calcul/malo/hugonnet/dh_wls.tif')
-    out_arr[out_arr<max_dhdt[0]] = np.nan
-    out_arr[out_arr>max_dhdt[1]] = np.nan
+    out_arr[out_arr < max_dhdt[0]] = np.nan
+    out_arr[out_arr > max_dhdt[1]] = np.nan
 
-    #finding max/min of dh/dt in a kernel
+    # finding max/min of dh/dt in a kernel
     if nproc == 1:
-        print('Finding min/max dhdt in radius of '+str(cutoff_kern_size)+'m on 1 proc...')
+        print('Finding min/max dhdt in radius of ' + str(cutoff_kern_size) + 'm on 1 proc...')
         max_dhdt_arr, min_dhdt_arr = robust_maxmin_disk_filter((out_arr, rad))
     else:
-        print('Finding min/max dhdt in radius of '+str(cutoff_kern_size)+'m on '+str(nproc)+' procs...')
-        nopt=int(np.floor(np.sqrt(nproc)))
-        nblocks=[nopt,nopt]
-        patches, inv, split = patchify(out_arr,nblocks,rad)
+        print('Finding min/max dhdt in radius of ' + str(cutoff_kern_size) + 'm on ' + str(nproc) + ' procs...')
+        nopt = int(np.floor(np.sqrt(nproc)))
+        nblocks = [nopt, nopt]
+        patches, inv, split = patchify(out_arr, nblocks, rad)
 
         pool = mp.Pool(nproc, maxtasksperchild=1)
         argsin = [(p, rad) for i, p in enumerate(patches)]
@@ -1932,10 +1994,10 @@ def robust_wls_ref_filter_stack(ds, ds_arr,err_arr,t_vals,fn_ref_dem,ref_dem_dat
 
         zip_out = list(zip(*outputs))
 
-        max_dhdt_arr = unpatchify(np.shape(out_arr),zip_out[0],inv,split)
-        min_dhdt_arr = unpatchify(np.shape(out_arr),zip_out[1],inv,split)
+        max_dhdt_arr = unpatchify(np.shape(out_arr), zip_out[0], inv, split)
+        min_dhdt_arr = unpatchify(np.shape(out_arr), zip_out[1], inv, split)
 
-    #temp: to check visually
+    # temp: to check visually
     # print('Writing to rasters for checking...')
     # max_dh_img= ref_dem.copy()
     # max_dh_img.img = max_dhdt_arr
@@ -1943,7 +2005,7 @@ def robust_wls_ref_filter_stack(ds, ds_arr,err_arr,t_vals,fn_ref_dem,ref_dem_dat
     # max_dh_img.img = min_dhdt_arr
     # max_dh_img.write('/calcul/malo/hugonnet/test_min.tif')
 
-    #using max/min dhdt to better condition spatio-temporal filtering from reference
+    # using max/min dhdt to better condition spatio-temporal filtering from reference
     if nproc == 1:
         print('Finding min/max ref in radius of ' + str(cutoff_kern_size) + 'm on 1 proc...')
         max_ref_arr, min_ref_arr = maxmin_disk_filter((ref_arr, rad))
@@ -1964,13 +2026,13 @@ def robust_wls_ref_filter_stack(ds, ds_arr,err_arr,t_vals,fn_ref_dem,ref_dem_dat
         max_ref_arr = unpatchify(np.shape(ref_arr), zip_out[0], inv, split)
         min_ref_arr = unpatchify(np.shape(ref_arr), zip_out[1], inv, split)
 
-    max_abs_dhdt = np.nanmax(np.stack((np.abs(min_dhdt_arr),np.abs(max_dhdt_arr))),axis=0)
+    max_abs_dhdt = np.nanmax(np.stack((np.abs(min_dhdt_arr), np.abs(max_dhdt_arr))), axis=0)
 
     # max_dh_img.img = max_abs_dhdt
     # max_dh_img.write('/calcul/malo/hugonnet/max_abs.tif')
 
-    min_dhdt_filt = np.nanmin(np.stack((np.zeros(np.shape(min_dhdt_arr)),min_dhdt_arr)),axis=0)
-    max_dhdt_filt = np.nanmax(np.stack((np.zeros(np.shape(max_dhdt_arr)),max_dhdt_arr)),axis=0)
+    min_dhdt_filt = np.nanmin(np.stack((np.zeros(np.shape(min_dhdt_arr)), min_dhdt_arr)), axis=0)
+    max_dhdt_filt = np.nanmax(np.stack((np.zeros(np.shape(max_dhdt_arr)), max_dhdt_arr)), axis=0)
 
     # max_dh_img.img = min_dhdt_filt
     # max_dh_img.write('/calcul/malo/hugonnet/min_filt.tif')
@@ -1979,52 +2041,61 @@ def robust_wls_ref_filter_stack(ds, ds_arr,err_arr,t_vals,fn_ref_dem,ref_dem_dat
     # max_dh_img.write('/calcul/malo/hugonnet/max_filt.tif')
 
     print('Refining spatio-temporal filtering with trend values...')
-    #spatial filtering refined with temporal approx of dhdt
-    print('Initial valid pixels: '+str(np.count_nonzero(~np.isnan(ds_arr))))
+    # spatial filtering refined with temporal approx of dhdt
+    print('Initial valid pixels: ' + str(np.count_nonzero(~np.isnan(ds_arr))))
 
     for i in range(ds_arr.shape[0]):
-        ds_arr[i, np.logical_or(ds_arr[i, :] > (max_ref_arr + base_thresh + 30*max_abs_dhdt),
-                                ds_arr[i, :] < (min_ref_arr - base_thresh - 30*max_abs_dhdt))] = np.nan
+        ds_arr[i, np.logical_or(ds_arr[i, :] > (max_ref_arr + base_thresh + 30 * max_abs_dhdt),
+                                ds_arr[i, :] < (min_ref_arr - base_thresh - 30 * max_abs_dhdt))] = np.nan
 
-    print('Pixels after refined spatial filtering: '+str(np.count_nonzero(~np.isnan(ds_arr))))
-    #temporal filtering refined with temporal approx of dhdt
+    print('Pixels after refined spatial filtering: ' + str(np.count_nonzero(~np.isnan(ds_arr))))
+    # temporal filtering refined with temporal approx of dhdt
     delta_t = (ref_dem_date - t_vals).astype('timedelta64[D]').astype(float) / 365.24
     dh = ref_arr[None, :, :] - ds_arr
     dt_arr = np.ones(dh.shape) * delta_t[:, None, None]
-    ds_arr[np.logical_or(np.logical_and(dt_arr < 0, np.logical_or(dh < - (base_thresh + max_deltat_ref*max_abs_dhdt[None,:,:]) + dt_arr * 2*max_abs_dhdt[None,:,:],
-                                                                 dh > (base_thresh + max_deltat_ref*max_abs_dhdt[None,:,:]) + dt_arr * 2*(-max_abs_dhdt[None,:,:]))),
-                        np.logical_and(dt_arr > 0, np.logical_or(dh > (base_thresh + max_deltat_ref*max_abs_dhdt[None,:,:]) + dt_arr * 2*max_abs_dhdt[None,:,:],
-                                                                 dh < - (base_thresh + max_deltat_ref*max_abs_dhdt[None,:,:]) + dt_arr * 2*(-max_abs_dhdt[None,:,:]))))] = np.nan
+    ds_arr[np.logical_or(np.logical_and(dt_arr < 0, np.logical_or(
+        dh < - (base_thresh + max_deltat_ref * max_abs_dhdt[None, :, :]) + dt_arr * 2 * max_abs_dhdt[None, :, :],
+        dh > (base_thresh + max_deltat_ref * max_abs_dhdt[None, :, :]) + dt_arr * 2 * (-max_abs_dhdt[None, :, :]))),
+                         np.logical_and(dt_arr > 0, np.logical_or(
+                             dh > (base_thresh + max_deltat_ref * max_abs_dhdt[None, :, :]) + dt_arr * 2 * max_abs_dhdt[
+                                                                                                           None, :, :],
+                             dh < - (base_thresh + max_deltat_ref * max_abs_dhdt[None, :, :]) + dt_arr * 2 * (
+                                 -max_abs_dhdt[None, :, :]))))] = np.nan
 
-
-    print('Pixels after refined temporal filtering: '+str(np.count_nonzero(~np.isnan(ds_arr))))
+    print('Pixels after refined temporal filtering: ' + str(np.count_nonzero(~np.isnan(ds_arr))))
 
     return ds_arr
 
 
-def fit_stack(fn_stack, fit_extent=None, fn_ref_dem=None, ref_dem_date=None, filt_ref='min_max', time_filt_thresh=[-30,30],
-              inc_mask=None, gla_mask=None, nproc=1, method='gpr', opt_gpr=False, kernel=None, filt_ls=False,
-              conf_filt_ls=0.99, tlim=None, tstep=0.25, outfile='fit.nc', write_filt=False, clobber=False,
-              merge_date=False, dask_parallel=False):
+def fit_stack(fn_stack, fit_extent=None, fn_ref_dem=None, ref_dem_date=None, filt_ref='min_max',
+              time_filt_thresh=[-30, 30], inc_mask=None, exc_mask=None, nproc=1, method='gpr',
+              opt_gpr=False, kernel=None, filt_ls=False, conf_filt_ls=0.99, tlim=None, tstep=0.25, outfile='fit.nc',
+              write_filt=False, clobber=False, merge_date=False, dask_parallel=False):
     """
     Given a netcdf stack of DEMs, perform filtering and temporal fitting of elevation with uncertainty propagation
 
     :param fn_stack: Filename for input netcdf file
+    :param fit_extent: extent over which to limit fit, as [xmin, xmax, ymin, ymax]
     :param fn_ref_dem: Filename for input reference DEM
     :param ref_dem_date: Date of reference DEM
     :param filt_ref: Type of filtering
     :param time_filt_thresh: Maximum dh/dt from reference DEM for time filtering
-    :param inc_mask: Optional inclusion mask
+    :param inc_mask: Optional inclusion mask. Pixels outside of the mask will not be fit.
+    :param exc_mask: Optional exclusion mask. Pixels inside of the mask will not be fit.
     :param nproc: Number of cores for multiprocessing [1]
-    :param method: Fitting method, currently supported: Gaussian Process Regression "gpr", Ordinary Least Squares "ols" and Weighted Least Squares "wls" ["gpr"]
+    :param method: Fitting method, currently supported: Gaussian Process Regression "gpr", Ordinary Least Squares "ols"
+     and Weighted Least Squares "wls" ["gpr"]
     :param opt_gpr: Run learning optimization in the GPR fitting [False]
     :param kernel: Kernel
     :param filt_ls: Filter least square with a first fit [False]
     :param conf_filt_ls: Confidence interval to filter least square fit [99%]
+    :param tlim: time range [t_min t_max] over which to fit. Default is full range of stack.
     :param tstep: Temporal step for fitted stack [0.25 year]
     :param outfile: Path to outfile
     :param write_filt: Write filtered stack to file
     :param clobber: Overwrite existing output files
+    :param merge_date: Merge any DEMs which have the same acquisition date
+    :param dask_parallel: run with dask parallel tools
     :return:
     """
 
@@ -2038,10 +2109,10 @@ def fit_stack(fn_stack, fit_extent=None, fn_ref_dem=None, ref_dem_date=None, fil
 
     if fit_extent is not None:
         xmin, xmax, ymin, ymax = fit_extent
-        ds = ds.sel(x=slice(xmin,xmax),y=slice(ymin,ymax))
+        ds = ds.sel(x=slice(xmin, xmax), y=slice(ymin, ymax))
 
-    print('Original temporal size of stack is '+str(ds.time.size))
-    print('Original spatial size of stack is '+str(ds.x.size)+','+str(ds.y.size))
+    print('Original temporal size of stack is ' + str(ds.time.size))
+    print('Original spatial size of stack is ' + str(ds.x.size) + ',' + str(ds.y.size))
 
     if inc_mask is not None:
         # ds_orig = ds.copy()
@@ -2063,43 +2134,46 @@ def fit_stack(fn_stack, fit_extent=None, fn_ref_dem=None, ref_dem_date=None, fil
         print('Merging ASTER DEMs with exact same date...')
         ds = isel_merge_dupl_dates(ds)
 
-    print('Final temporal size of stack is '+str(ds.time.size))
-    print('Elapsed time is '+str(time.time() - start))
+    print('Final temporal size of stack is ' + str(ds.time.size))
+    print('Elapsed time is ' + str(time.time() - start))
 
-    if gla_mask is not None:
-        uns_mask = get_stack_mask(gla_mask, ds)
-        uns_arr = uns_mask[np.newaxis,:,:]
+    if exc_mask is not None:
+        uns_mask = get_stack_mask(exc_mask, ds)
+        uns_arr = uns_mask[np.newaxis, :, :]
     else:
         uns_arr = None
 
     ds_arr = ds.z.values
     ds_corr = ds.corr.values
-    #change correlation for SETSM segments
+    # change correlation for SETSM segments
     ind_setsm = np.array(['SETSM' in name for name in ds.dem_names.values])
-    ds_corr[ind_setsm,:] = 60.
+    ds_corr[ind_setsm, :] = 60.
     t_vals = ds.time.values
     uncert = ds.uncert.values
     filt_vals = (t_vals - np.datetime64('2000-01-01')).astype('timedelta64[D]').astype(int)
 
-    #pre-filtering
+    # pre-filtering
     if fn_ref_dem is not None:
         assert filt_ref in ['min_max', 'time', 'both'], "fn_ref must be one of: min_max, time, both"
-        ds_arr = prefilter_stack(ds,ds_arr,fn_ref_dem,t_vals,filt_ref=filt_ref,ref_dem_date=ref_dem_date,
-                                 time_filt_thresh=time_filt_thresh,nproc=nproc)
+        ds_arr = prefilter_stack(ds, ds_arr, fn_ref_dem, t_vals, filt_ref=filt_ref, ref_dem_date=ref_dem_date,
+                                 time_filt_thresh=time_filt_thresh, nproc=nproc)
         print('Elapsed time is ' + str(time.time() - start))
 
-    #constrain variance based on manually defined dependencies
-    err_arr, med_slope = constrain_var_slope_corr(ds,ds_arr,ds_corr,t_vals,uncert,fn_ref_dem=fn_ref_dem,nproc=nproc)
+    # constrain variance based on manually defined dependencies
+    err_arr, med_slope = constrain_var_slope_corr(ds, ds_arr, ds_corr, t_vals, uncert, fn_ref_dem=fn_ref_dem,
+                                                  nproc=nproc)
 
     if fn_ref_dem is not None:
-        ds_arr = robust_wls_ref_filter_stack(ds, ds_arr, err_arr, t_vals, fn_ref_dem, ref_dem_date=np.datetime64('2013-01-01'),
-                                    max_dhdt=time_filt_thresh, nproc=nproc, cutoff_kern_size=1000, max_deltat_ref=2.,
-                                    base_thresh=100.)
+        ds_arr = robust_wls_ref_filter_stack(ds, ds_arr, err_arr, t_vals, fn_ref_dem,
+                                             ref_dem_date=np.datetime64('2013-01-01'),
+                                             max_dhdt=time_filt_thresh, nproc=nproc, cutoff_kern_size=1000,
+                                             max_deltat_ref=2.,
+                                             base_thresh=100.)
 
-    #write variance stats to disk
-    if gla_mask is not None:
+    # write variance stats to disk
+    if exc_mask is not None:
         print('Deriving variance stats...')
-        bins_slope = np.arange(0,80,10)
+        bins_slope = np.arange(0, 80, 10)
         # fn_stats_slope = os.path.join(os.path.dirname(outfile),os.path.splitext(os.path.basename(outfile))[0]+'_slope_var.csv')
         # get_var_by_bin(ds,ds_arr,med_slope,bins_slope,fn_stats_slope,inc_mask=None,exc_mask=gla_mask,rast_mask_cube=False)
 
@@ -2108,8 +2182,10 @@ def fit_stack(fn_stack, fit_extent=None, fn_ref_dem=None, ref_dem_date=None, fil
         #                               os.path.splitext(os.path.basename(outfile))[0] + '_corr_var.csv')
         # get_var_by_bin(ds, ds_arr, ds_corr, bins_corr, fn_stats_corr, exc_mask=gla_mask, rast_mask_cube=True)
 
-        fn_stats_both = os.path.join(os.path.dirname(outfile), os.path.splitext(os.path.basename(outfile))[0] + 'slopecorr_var.csv')
-        get_var_by_corr_slope_bins(ds, ds_arr, med_slope, bins_slope, ds_corr, bins_corr, fn_stats_both, inc_mask=None, exc_mask=gla_mask, nproc=1)
+        fn_stats_both = os.path.join(os.path.dirname(outfile),
+                                     os.path.splitext(os.path.basename(outfile))[0] + 'slopecorr_var.csv')
+        get_var_by_corr_slope_bins(ds, ds_arr, med_slope, bins_slope, ds_corr, bins_corr, fn_stats_both, inc_mask=None,
+                                   exc_mask=exc_mask, nproc=1)
         print('Elapsed time is ' + str(time.time() - start))
 
         # #TODO: need to estimate dh here first?
@@ -2124,10 +2200,10 @@ def fit_stack(fn_stack, fit_extent=None, fn_ref_dem=None, ref_dem_date=None, fil
     else:
         y0 = tlim[0].astype('datetime64[D]').astype(object).year
         y1 = tlim[-1].astype('datetime64[D]').astype(object).year
-    fit_t = np.arange(y0, y1+tstep, tstep) - y0
+    fit_t = np.arange(y0, y1 + tstep, tstep) - y0
     nice_fit_t = [np.timedelta64(int(d), 'D').astype(int) for d in np.round(fit_t * 365.2524)]
 
-    #converting time values for input vector
+    # converting time values for input vector
     ftime = t_vals
     total_delta = np.datetime64('{}-01-01'.format(int(y1))) - np.datetime64('{}-01-01'.format(int(y0)))
     ftime_delta = np.array([t - np.datetime64('{}-01-01'.format(int(y0))) for t in ftime])
@@ -2137,7 +2213,7 @@ def fit_stack(fn_stack, fit_extent=None, fn_ref_dem=None, ref_dem_date=None, fil
 
     print('Fitting with method: ' + method)
 
-    fn_filt = os.path.join(os.path.dirname(outfile),os.path.splitext(os.path.basename(fn_stack))[0]+'_filtered.nc')
+    fn_filt = os.path.join(os.path.dirname(outfile), os.path.splitext(os.path.basename(fn_stack))[0] + '_filtered.nc')
 
     if nproc == 1:
         print('Processing with 1 core...')
@@ -2158,17 +2234,17 @@ def fit_stack(fn_stack, fit_extent=None, fn_ref_dem=None, ref_dem_date=None, fil
     else:
         print('Processing with ' + str(nproc) + ' cores...')
 
-        #if not using dask scheduler/chunking, we split manually and process with numba.jit + multiprocessing.pool+map
+        # if not using dask scheduler/chunking, we split manually and process with numba.jit + multiprocessing.pool+map
         if not dask_parallel:
             print('Using multiprocessing...')
 
-            if method in ['ols','wls']:
-                #here calculation is done matricially so we want to use all cores with the largest tiles possible
+            if method in ['ols', 'wls']:
+                # here calculation is done matricially so we want to use all cores with the largest tiles possible
                 opt_n_tiles = int(np.floor(np.sqrt(nproc)))
                 n_x_tiles = opt_n_tiles
                 n_y_tiles = opt_n_tiles
             elif method == 'gpr':
-                #here calculation is within a for loop: better to have small tiles to get an idea of the processing speed
+                # here calculation is within a for loop: better to have small tiles to get an idea of the processing speed
                 n_x_tiles = np.ceil(ds['x'].shape[0] / 30).astype(int)  # break it into 10x10 tiles
                 n_y_tiles = np.ceil(ds['y'].shape[0] / 30).astype(int)
 
@@ -2183,18 +2259,19 @@ def fit_stack(fn_stack, fit_extent=None, fn_ref_dem=None, ref_dem_date=None, fil
 
             if method == 'gpr':
 
-                    argsin = [(s, i, np.copy(time_vals), split_err[i], np.copy(fit_t), opt_gpr, kernel, split_uns[i]) for i, s in
-                              enumerate(split_arr)]
-                    outputs = pool.map(gpr_wrapper, argsin, chunksize=1)
-                    pool.close()
-                    pool.join()
+                argsin = [(s, i, np.copy(time_vals), split_err[i], np.copy(fit_t), opt_gpr, kernel, split_uns[i]) for
+                          i, s in
+                          enumerate(split_arr)]
+                outputs = pool.map(gpr_wrapper, argsin, chunksize=1)
+                pool.close()
+                pool.join()
 
-                    # this was for when mapped function was giving multiple outputs..
-                    # zip_out = list(zip(*outputs))
-                    # out_cube = stitcher(zip_out[0], (n_y_tiles, n_x_tiles))
-                    # filt_cube = stitcher(zip_out[1], (n_y_tiles, n_x_tiles))
+                # this was for when mapped function was giving multiple outputs..
+                # zip_out = list(zip(*outputs))
+                # out_cube = stitcher(zip_out[0], (n_y_tiles, n_x_tiles))
+                # filt_cube = stitcher(zip_out[1], (n_y_tiles, n_x_tiles))
 
-                    stitched_outputs = stitcher(outputs, (n_y_tiles,n_x_tiles))
+                stitched_outputs = stitcher(outputs, (n_y_tiles, n_x_tiles))
 
             elif method in ['ols', 'wls']:
                 if method == 'ols':
@@ -2213,21 +2290,22 @@ def fit_stack(fn_stack, fit_extent=None, fn_ref_dem=None, ref_dem_date=None, fil
                 arr_to_img(ds, out_arr, outfile=outfile)
                 if write_filt:
                     filt_cube = stitcher(zip_out[1], (n_y_tiles, n_x_tiles))
-                    cube_to_stack(ds, filt_cube, y0, filt_vals, outfile=fn_filt, clobber=clobber, filt_bool=True, ci=False)
+                    cube_to_stack(ds, filt_cube, y0, filt_vals, outfile=fn_filt, clobber=clobber, filt_bool=True,
+                                  ci=False)
 
-        #here we use dask instead, testing only with gpr for now
+        # here we use dask instead, testing only with gpr for now
         else:
             print('Using dask distributed parallel, computing with chunks sizes of 30...')
             print('Elapsed time is ' + str(time.time() - start))
 
             if method == 'gpr':
 
-                ds['err'] = (['time','y','x'], err_arr.astype(np.float32))
-                #TODO: look at the details of issue before posting on xarray's GitHub: dem_names dtype "object" not recognized for writing after an "isel"
+                ds['err'] = (['time', 'y', 'x'], err_arr.astype(np.float32))
+                # TODO: look at the details of issue before posting on xarray's GitHub: dem_names dtype "object" not recognized for writing after an "isel"
                 ds = ds.drop('dem_names')
 
                 print('Saving data to temporary file...')
-                fn_tmp = os.path.join(os.path.dirname(outfile),'tmp.nc')
+                fn_tmp = os.path.join(os.path.dirname(outfile), 'tmp.nc')
 
                 mkdir_p(os.path.dirname(fn_tmp))
                 if os.path.exists(fn_tmp):
@@ -2235,7 +2313,7 @@ def fit_stack(fn_stack, fit_extent=None, fn_ref_dem=None, ref_dem_date=None, fil
                 ds.to_netcdf(fn_tmp)
                 ds.close()
 
-                #TODO: getting an issue similar than this: https://github.com/pydata/xarray/issues/1836, but:
+                # TODO: getting an issue similar than this: https://github.com/pydata/xarray/issues/1836, but:
                 # persist takes ages to load the data and it happens even without zipping netcdf...
 
                 # ds_dask = xr.open_dataset(fn_tmp).chunk({'x':30,'y':30})
@@ -2249,8 +2327,8 @@ def fit_stack(fn_stack, fit_extent=None, fn_ref_dem=None, ref_dem_date=None, fil
                 z_vals = ds_dask.z.values
                 err_vals = ds_dask.err.values
 
-                chunk_z = ds_dask.z.chunk({'x':150,'y':150})
-                chunk_err = ds_dask.err.chunk({'x':150,'y':150})
+                chunk_z = ds_dask.z.chunk({'x': 150, 'y': 150})
+                chunk_err = ds_dask.err.chunk({'x': 150, 'y': 150})
 
                 print('Elapsed time is ' + str(time.time() - start))
 
@@ -2259,15 +2337,15 @@ def fit_stack(fn_stack, fit_extent=None, fn_ref_dem=None, ref_dem_date=None, fil
                 d = gpr_dask(chunk_z, chunk_err, time_vals, fit_t)
                 print('Starting compute')
                 with ProgressBar():
-                    out_ds = d.compute(num_workers=nproc,scheduler='processes')
-                out_ds = out_ds.transpose('new_time','y','x')
+                    out_ds = d.compute(num_workers=nproc, scheduler='processes')
+                out_ds = out_ds.transpose('new_time', 'y', 'x')
                 stitched_outputs = out_ds.values
 
         print('Elapsed time is ' + str(time.time() - start))
 
         print('Writing results to disk...')
 
-        #now we write results to disk
+        # now we write results to disk
         out_cube = stitched_outputs[:2 * len(nice_fit_t), :, :]
         cube_to_stack(ds, out_cube, y0, nice_fit_t, slope_arr=med_slope, outfile=outfile, clobber=clobber)
         if write_filt:
@@ -2287,5 +2365,3 @@ def fit_stack(fn_stack, fit_extent=None, fn_ref_dem=None, ref_dem_date=None, fil
         #     full_filt_cube = np.zeros((np.shape(filt_cube)[0], ds_orig.y.size, ds_orig.x.size)) * np.nan
         #     full_filt_cube[slices[0], slices[1]] = filt_cube
         #     filt_cube = full_filt_cube
-
-
