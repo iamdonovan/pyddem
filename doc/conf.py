@@ -52,8 +52,8 @@ def setup(app):
 # -- Project information -----------------------------------------------------
 
 project = 'pyddem'
-copyright = '2019, Luc Girod, Robert McNabb, Chris Nuth, Romain Hugonnet'
-author = 'Luc Girod, Robert McNabb, Chris Nuth, Romain Hugonnet'
+copyright = '2020, Romain Hugonnet, Robert McNabb'
+author = 'Romain Hugonnet, Robert McNabb'
 
 # The short X.Y version
 version = ''
@@ -165,7 +165,7 @@ latex_elements = {
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
     (master_doc, 'pyddem.tex', 'pyddem Documentation',
-     'Luc Girod, Robert McNabb, Chris Nuth', 'manual'),
+     'Romain Hugonnet, Robert McNabb', 'manual'),
 ]
 
 
