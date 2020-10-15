@@ -63,3 +63,5 @@ We can do the same thing as above using the command-line script provided in **bi
 ::
     stack_dems.py AST*.tif -res 100 -o my_stack.nc -exc_mask ~/data/RGI/v6.0/10_rgi60_NorthAsia/10_rgi60_NorthAsia.shp
             -ref_tiles '~/data/ArcticDEM/v3.0/Mosaic/ArcticDEM_Tiles.shp' -c -do_coreg -add_ref
+
+Once you have a stack of DEMs, you can run  :doc:`tutorials/fitting` on the stack to fit a time series of elevation.
