@@ -10,7 +10,7 @@ setup(name='pyddem',
       packages=['pyddem'],
       install_requires=['dask', 'fiona', 'gdal', 'geopandas', 'h5py', 'llc',
                         'matplotlib', 'netCDF4', 'numba', 'numpy', 'pandas', 'pybob>=0.25', 'pymmaster>=0.1',
-                        'pyproj', 'scikit-image', 'scikit-learn', 'scipy', 'skgstat', 'xarray'],
+                        'pyproj', 'scikit-image', 'scikit-learn', 'scipy', 'scikit-gstat>=0.2', 'xarray'],
       scripts=['bin/fit_gp_monthly_aster.py', 'bin/fit_stack.py', 'bin/stack_dems.py',
                'bin/stack_per_1deg_tiles_aster.py'],
       zip_safe=False)
