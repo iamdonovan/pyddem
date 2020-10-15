@@ -12,7 +12,7 @@ This is the documentation for pyddem, a set of tools for the processing of time 
    :maxdepth: 2
 
    setup
-   tutorial/index
+   tutorials/index
    pyddem/index
 
 Indices and tables
