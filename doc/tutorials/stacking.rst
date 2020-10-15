@@ -1,8 +1,8 @@
 creating a stack of dems with pyddem
 ====================================
 
-The basic procedure for stacking DEMs involves using either :doc:`pyddem/modules/stack_tools.py#pyddem.stack_tools.create_mmaster_stack`
-or :doc:`pyddem/scripts/stack_dems.py` from the command line.
+The basic procedure for stacking DEMs involves using either :doc:`../pyddem/modules/stack_tools#pyddem.stack_tools.create_mmaster_stack`
+or :doc:`../pyddem/scripts/stack_dems` from the command line.
 
 The first step is to have a number of DEMs available to stack. For this example, we'll assume that these are in the same
 folder as we are trying to create the stack, and that they all have a filename of the form **AST*.tif**. Note that any
@@ -30,7 +30,7 @@ terrain that should not be included in the co-registration, as well as an inclus
 
 Running from a script
 #####################
-The following example demonstrates how you can run :doc:`pyddem/modules/stack_tools.py#pyddem.stack_tools.create_mmaster_stack`
+The following example demonstrates how you can run :doc:`../pyddem/modules/stack_tools#pyddem.create_mmaster_stack`
 from your own script. create_mmaster_stack() will load each of the DEMs in turn and insert it into the stack.
 ::
     from glob import glob
@@ -64,4 +64,4 @@ We can do the same thing as above using the command-line script provided in **bi
     stack_dems.py AST*.tif -res 100 -o my_stack.nc -exc_mask ~/data/RGI/v6.0/10_rgi60_NorthAsia/10_rgi60_NorthAsia.shp
             -ref_tiles '~/data/ArcticDEM/v3.0/Mosaic/ArcticDEM_Tiles.shp' -c -do_coreg -add_ref
 
-Once you have a stack of DEMs, you can run  :doc:`tutorials/fitting` on the stack to fit a time series of elevation.
+Once you have a stack of DEMs, you can run various :doc:`fitting` routine on the stack to fit a time series of elevation.
