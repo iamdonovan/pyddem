@@ -6,14 +6,13 @@
 Welcome to pyddem's documentation!
 =====================================
 
-This is the documentation for MMASTER-workflows and pyddem, a set of tools for the processing of improved
-DEMs from ASTER.
+This is the documentation for pyddem, a set of tools for the processing of time series of DEMs.
 
 .. toctree::
    :maxdepth: 2
 
    setup
-   tutorial
+   tutorial/index
    pyddem/index
 
 Indices and tables
