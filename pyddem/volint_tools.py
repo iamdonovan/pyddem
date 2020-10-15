@@ -45,8 +45,8 @@ def lowess_homemade_kern(x, y, w, a1, kernel='Exp'):
     #inspired by: https://xavierbourretsicotte.github.io/loess.html
     homebaked lowess with variogram kernel + heteroscedasticity of observations with error
 
-    :param x:
-    :param y:
+    :param x:x
+    :param y:y
     :param w: heteroscedastic weights (inverse of variance)
     :param a1: range of the kernel (in variogram terms)
     :param kernel: kernel function
@@ -81,6 +81,18 @@ def lowess_homemade_kern(x, y, w, a1, kernel='Exp'):
 
 
 def interp_linear(xp, yp, errp, acc_y, loo=False):
+    """
+    Piece-wise linear interpolation with linear extrapolation on the edges and basic error propagation
+    (where to interpolate is given by NaN values in the vectors)
+
+    :param xp: x
+    :param yp: y
+    :param errp: error
+    :param acc_y: prior knowledge of maximum acceleration for assessing possible interpolation error
+    :param loo: perform a first leave-one-out interpolation, remove data outliers (outside error bars)
+
+    :returns: y interpolated, error propagated, error of interpolation
+    """
     # interpolation 1d with error propagation: nan are considered void, possible leave-one-out (reinterpolate each value)
 
     # getting void index
@@ -130,10 +142,23 @@ def interp_linear(xp, yp, errp, acc_y, loo=False):
     return yp_out, errp_out, errlin_out
 
 
-def interp_lowess(xp, yp, errp, acc_y, rang, kernel='Exc'):
+def interp_lowess(xp, yp, errp, acc_y, crange, kernel=kernel_exclass):
+    """
+    LOWESS interpolation with error propagation
+    (where to interpolate is given by NaN values in the vectors)
+
+    :param xp: x
+    :param yp: y
+    :param errp: error
+    :param acc_y: prior knowledge of maximum acceleration for assessing possible interpolation error
+    :param rang: Range of kernel used for local linear regression
+    :param kernel: Form of kernel [Exponential Class]
+
+    :return: y interpolated, error propagated, error of interpolation
+    """
     # interp1d with local regression and error propagation
 
-    yp_out, errp_out = lowess_homemade_kern(xp, yp, 1 / (errp ** 2), a1=rang / 4., kernel=kernel)
+    yp_out, errp_out = lowess_homemade_kern(xp, yp, 1 / (errp ** 2), a1=crange / 4., kernel=kernel)
 
     idx_void = np.isnan(yp)
     errlin_out = np.zeros(len(yp)) * np.nan
@@ -156,7 +181,21 @@ def interp_lowess(xp, yp, errp, acc_y, rang, kernel='Exc'):
 
     return yp_out, errp_out, errlin_out
 
-def double_sum_covar_hypso(tot_err, slope_bin, elev_bin, area_tot, crange, kernel):
+def double_sum_covar_hypso(tot_err, slope_bin, elev_bin, area_tot, crange, kernel=kernel_exclass):
+
+    """
+    1D hypsometric propagation of correlated error through double sum of covariance
+
+    :param tot_err: Error per hypsometric bin
+    :param slope_bin: Slope per bin (to assess horizontal distance)
+    :param elev_bin: Reference elevation per bin
+    :param area_tot: Area per bin
+    :param crange: Correlation range
+    :param kernel: Form of kernel [Exponential Class]
+
+    :return: y interpolated, error propagated, error of interpolation
+    """
+
     n = len(tot_err)
 
     dist_bin = np.zeros(n)
@@ -179,7 +218,26 @@ def double_sum_covar_hypso(tot_err, slope_bin, elev_bin, area_tot, crange, kerne
     return np.sqrt(var_err)
 
 def hypso_dc(dh_dc, err_dc, ref_elev, dt, tvals, mask, gsd, slope=None, bin_type='fixed', bin_val=100., filt_bin='5NMAD', method='linear'):
+    """
+    Hypsometric spatial integration of elevation time series with NMAD filtering and with propagation of correlated errors depending on time lag to closest observation
+    currently written for the "hypsometric cheat" volume integration routine (see tdem tools), the x/y dimension are thus flattened in 1D and we use only hypsometry for integration
+    for now, the function defining the long-range sum of variogram is defined directly in the script based empirical sampling and least-squares fits to ICESat done separately
 
+    :param dh_dc: Data cube of elevation change (flattened in x/y)
+    :param err_dc: Data cube of elevation change errors (flattened in x/y)
+    :param ref_elev: Raster of reference elevation (flattened in x/y)
+    :param dt: Data cube of time lag to closest observation (flattened in x/y)
+    :param tvals: Date vector
+    :param mask: Mask of valid values (flattened in x/y)
+    :param gsd: Ground sampling distance in meters
+    :param slope: Slope, only used to propagate correlated hypometric errors
+    :param bin_type: Type of elevation binning (percentage of elevation range, or flat value)
+    :param bin_val: Elevation bin flat value (if that is used)
+    :param filt_bin: Filtering of outliers per elevation bin [currently 5NMAD of full time range]
+    :param method: Interpolation/extrapolation method for void elevatio bins
+
+    :return: Three dataframes with volume change time series
+    """
 
     #filtering with error threshold?
     filt_err = err_dc[-1, :] > 500.
