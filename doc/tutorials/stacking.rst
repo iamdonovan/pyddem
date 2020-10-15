@@ -52,7 +52,7 @@ from your own script. create_mmaster_stack() will load each of the DEMs in turn 
 
 This will create an output file called **my_stack.nc**. Note that by not specifying an extent, we automatically
 take the extent of the first DEM (chronologically). In the stack file, each of the **AST*.tif** DEMs are re-sampled to 100 m
-(**ref=100**) and added to the stack in chronological order. It will co-register each of the DEMs to the reference
+(**res=100**) and added to the stack in chronological order. It will co-register each of the DEMs to the reference
 DEM (**coreg=True**), overwrite any existing file (**clobber=True**), and add the reference DEM to the stack
 (**add_ref**), with any terrain falling within the RGI v6.0 glacier outlines (**exc_mask=fn_glacmask**)
 ignored for co-registration.
