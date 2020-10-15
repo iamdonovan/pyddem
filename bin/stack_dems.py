@@ -52,8 +52,6 @@ def _argparser():
     return parser
 
 
-def create_mmaster_stack(filt_mm_corr=False, l1a_zipped=False, y0=1900, tmptag = None):
-
 def main():
     parser = _argparser()
     args = parser.parse_args()
