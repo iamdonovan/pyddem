@@ -21,8 +21,8 @@ Running WLS fitting from a script
 *********************************
 This example shows how you can run :func:`pyddem.fit_tools.fit_stack` to fit a linear trend using
 weighted least-squares  to a stack of DEMs. It will filter the raw elevations using a reference DEM and a spatial
-filter, fit only pixels that fall within the provided land mask, and provide a 95% confidence interval to the fit,
-using 2 cores. For more information on the various parameters, see :func:`pyddem.fit_tools.fit_stack`.
+filter, fit only pixels that fall within the provided land mask using 2 cores.
+For more information on the various parameters, see :func:`pyddem.fit_tools.fit_stack`.
 ::
     import numpy as np
     from pyddem.fit_tools import fit_stack
@@ -38,8 +38,7 @@ using 2 cores. For more information on the various parameters, see :func:`pyddem
               filt_ref='min_max',
               inc_mask=fn_landmask,
               nproc=2,
-              method='wls',
-              conf_filt_ls=0.95)
+              method='wls')
 
 The resulting fit will be written to a number of geotiffs:
 
@@ -55,7 +54,7 @@ Running WLS fitting from the command line
 This example will do the same as above, but using the command-line tool :doc:`pyddem/scripts/fit_stack`.
 ::
     fit_stack.py my_stack.nc -ref_dem arcticdem_mosaic_100m_v3.0.tif -ref_dem_date 2013-08-01 -f min_max
-        -inc_mask ~/data/Alaska_Coastline.shp -n 2 -m wls -ci 0.95
+        -inc_mask ~/data/Alaska_Coastline.shp -n 2 -m wls
 
 Gaussian Process Regression (GPR)
 #################################
@@ -97,8 +96,7 @@ Running GPR fitting from a script
 *********************************
 This example shows how you can run :func:`pyddem.fit_tools.fit_stack` to fit a trend using
 GPR to a stack of DEMs. It will filter the raw elevations using a reference DEM and both a spatial and temporal filter,
-fit only pixels that fall within the provided land mask, and provide a 99% confidence interval to the fit,
-using 4 cores.
+fit only pixels that fall within the provided land mask using 4 cores.
 
 Here, we will use the default kernel (see above), but running from a script or via the python interpreter, it is
 possible to use your own kernel (parameter **kernel=**). For more information on the other parameters,
@@ -118,8 +116,7 @@ see :func:`pyddem.fit_tools.fit_stack`.
               filt_ref='min_max',
               inc_mask=fn_landmask,
               nproc=2,
-              method='gpr',
-              conf_filt_ls=0.99)
+              method='gpr')
 
 
 Running GPR fitting from the command line
@@ -128,7 +125,7 @@ The process for running GPR fitting using :func:`pyddem.fit_tools.fit_stack` wor
 WLS fitting. Note that from the command-line, it is not currently possible to use your own kernel for the fitting.
 ::
     fit_stack.py my_stack.nc -ref_dem arcticdem_mosaic_100m_v3.0.tif -ref_dem_date 2013-08-01 -f min_max
-        -inc_mask ~/data/Alaska_Coastline.shp -n 2 -m gpr -ci 0.99
+        -inc_mask ~/data/Alaska_Coastline.shp -n 2 -m gpr
 
 Once the fit has run, it will create an output file called **fit.nc**, which contains variables for the fitted
 elevation and confidence interval at each time step.
