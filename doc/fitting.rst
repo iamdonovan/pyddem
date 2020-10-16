@@ -43,12 +43,12 @@ using 2 cores. For more information on the various parameters, see :func:`pyddem
 
 The resulting fit will be written to a number of geotiffs:
 
-* fit_dh.tif - the fitted linear rate of elevation change
-* fit_interc.tif - the intercept of the linear fit
-* fit_err.tif - slope error of the linear fit
-* fit_nb.tif - number of valid observations per pixel
-* fit_dmin.tif - first date with valid observation per pixel
-* fit_dmax.tif - final date with valid observation per pixel
+* **fit_dh.tif** - the fitted linear rate of elevation change
+* **fit_interc.tif** - the intercept of the linear fit
+* **fit_err.tif** - slope error of the linear fit
+* **fit_nb.tif** - number of valid observations per pixel
+* **fit_dmin.tif** - first date with valid observation per pixel
+* **fit_dmax.tif** - final date with valid observation per pixel
 
 Running WLS fitting from the command line
 *****************************************
@@ -64,16 +64,21 @@ also models a time series of elevation using `gaussian process regression <https
 (GPR). This kind of fitting allows us to capture some of the nonlinear elevation changes seen over glaciers, for
 example where large surges have taken place, or where thinning has accelerated due to dynamic processes.
 
-Below is an example GIF showing the fitted time series of elevation change over **TODO**, between 1 January 2000 and
-31 December 2019. It was created using a total of **TODO** ASTER DEMs and **TODO**
-`ArcticDEM <https://www.pgc.umn.edu/data/arcticdem/>`__ [1]_, [2]_ strips.
+Below are two example GIFs showing the fitted annual rate of elevation change, and the fitted cumulative elevation change
+over Mýrdalsjökull, Iceland, between 1 January 2000 an 31 December 2019. It was created with an average of 68
+observations (ASTER DEMs and `ArcticDEM <https://www.pgc.umn.edu/data/arcticdem/>`__ [1]_, [2]_ strips) per pixel.
+
+.. image:: images/Myrdals_rate.gif
+    :width: 49%
+.. image:: images/Myrdals_cumul.gif
+    :width: 49%
 
 Gaussian Process Regression takes as input a **kernel**, or a model of the variance :math:`\sigma_h(x,y,\Delta t)^2`
 of the data. Here, we have explicitly programmed a kernel that is a combination of the following kernel functions:
 
 .. math::
     \sigma_h(x,y,\Delta t)^2 = PL(x,y,\Delta t) &+& ESS(\phi_{per},\sigma_{per}^2,\Delta t) + RBF(\Delta t_{loc}, \sigma_{loc}^2, \Delta t) \\
-        &+& RQ(\Delta t_{nl}, \sigma_{nl}, \Delta t) * PL(x,y,\Delta t),
+        &+& RQ(\Delta t_{nl}, \sigma_{nl}, \Delta t) * PL(x,y,\Delta t) + \sigma_h(t,x,y)^2
 
 with:
 
@@ -81,7 +86,7 @@ with:
 * ESS a periodic exponential sine-squared kernel, representing the seasonality of the elevation changes
 * RBF a local radial basis function kernel, showing how close elevation changes are to each other with varying time differences
 * RQ a rational quadratic kernel multiplied by a linear kernel, to capture the long-term non-linear trends.
-* white noise, representing the average of the measurement errors.
+* white noise representing the average of the measurement errors at time *t*, :math:`\sigma_h(t,x,y)^2`
 
 When running :func:`pyddem.fit_tools.fit_stack` from a script, it is possible to program your own kernel, in order
 to model the variance of whatever elevation changes you might be looking for.
@@ -129,7 +134,7 @@ Once the fit has run, it will create an output file called **fit.nc**, which con
 elevation and confidence interval at each time step.
 
 That's it! The last thing to do is to open up the netCDF file and check the results. After that, you can use
-:doc:`pyddem/modules/volint_tools` to calculate volume changes from your fitted elevation changes. Good luck!
+:mod:`pyddem.volint_tools` to calculate volume changes from your fitted elevation changes. Good luck!
 
 
 Notes
