@@ -461,7 +461,7 @@ def reproj_stack(ds, utm_out, nice_latlon_tiling=False, write_ds=None, nproc=1):
 
     return ds_out
 
-
+#TODO: get_crs_from_stack without having to create GeoImg
 def make_geoimg(ds, band=0, var='z'):
     """
     Create a GeoImg representation of a given band from an xarray dataset.
