@@ -3,7 +3,7 @@ Fitting a time series of DEMs with pyddem
 
 Once you have :doc:`created <stack_dems>` a stack of DEMs, :mod:`pyddem.fit_tools` has a number of functions to fit
 a time series of DEMs. The main function, which will take a stack of DEMs and produce a fitted time series,
-is :func:`pyddem.fit_tools.fit_stack`, which can also be run using the command-line tool :doc:`pyddem/scripts/stack_dems`.
+is :func:`pyddem.fit_tools.fit_stack`, which can also be run using the command-line tool :doc:`pyddem/scripts/fit_stack`.
 
 This assumes that you have first created a stack of DEMs following the instructions provided :doc:`here <stack_dems>`.
 
