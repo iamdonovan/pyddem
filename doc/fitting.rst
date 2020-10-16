@@ -128,7 +128,7 @@ WLS fitting. Note that from the command-line, it is not currently possible to us
         -inc_mask ~/data/Alaska_Coastline.shp -n 2 -m gpr
 
 Once the fit has run, it will create an output file called **fit.nc**, which contains variables for the fitted
-elevation and confidence interval at each time step.
+elevation and confidence interval (1-:math:`\sigma`) at each time step.
 
 That's it! The last thing to do is to open up the netCDF file and check the results. After that, you can use
 :mod:`pyddem.volint_tools` to calculate volume changes from your fitted elevation changes. Good luck!
