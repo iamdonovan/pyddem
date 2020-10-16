@@ -12,7 +12,8 @@ This is the documentation for pyddem, a set of tools for the processing of time 
    :maxdepth: 2
 
    setup
-   tutorials/index
+   stacking
+   fitting
    pyddem/index
 
 Indices and tables
