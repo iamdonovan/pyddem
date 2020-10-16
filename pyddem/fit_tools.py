@@ -17,6 +17,7 @@ from dask.diagnostics import ProgressBar
 import pandas as pd
 import functools
 import xarray as xr
+import geopandas
 import matplotlib.pylab as plt
 import multiprocessing as mp
 import matplotlib
@@ -39,6 +40,7 @@ from pybob.coreg_tools import get_slope
 from pybob.image_tools import create_mask_from_shapefile
 from pybob.plot_tools import set_pretty_fonts
 from pybob.bob_tools import mkdir_p
+from pybob.plot_tools import plot_polygon_df
 import pyddem.stack_tools as st
 import pyddem.tdem_tools as tt
 import pyddem.vector_tools as vt
@@ -48,7 +50,7 @@ from warnings import filterwarnings
 filterwarnings('ignore')
 
 
-def make_dh_animation(ds, month_a_year=None, figsize=(8, 10), t0=None, t1=None, dh_max=20, var='z', cmap='RdYlBu',
+def make_dh_animation(ds, fn_shp=None,month_a_year=None, rates=False, figsize=(10,10), t0=None, t1=None, dh_max=20, var='z', cmap='RdYlBu',
                       xlbl='easting (km)',
                       ylbl='northing (km)'):
     """
@@ -56,6 +58,7 @@ def make_dh_animation(ds, month_a_year=None, figsize=(8, 10), t0=None, t1=None, 
 
        :param ds: xarray Dataset of elevation time series
        :param month_a_year: Numerical month to keep only one month per year in the animation
+       :param rates: Display rates instead of cumulative change
        :param figsize: Tuple of figure size
        :param t0: Starting date
        :param t1: End date
@@ -91,7 +94,10 @@ def make_dh_animation(ds, month_a_year=None, figsize=(8, 10), t0=None, t1=None, 
         # mid = int(np.floor(len(ds_sub.time.values)/2))
 
     if var == 'z':
-        dh_ = ds_sub.variables[var].values - ds_sub.variables[var].values[0]
+        if rates:
+            dh_ = np.diff(ds_sub.variables[var].values,axis=0)
+        else:
+            dh_ = ds_sub.variables[var].values - ds_sub.variables[var].values[0]
     elif var == 'z_ci':
         dh_ = ds_sub.variables[var].values
 
@@ -100,23 +106,41 @@ def make_dh_animation(ds, month_a_year=None, figsize=(8, 10), t0=None, t1=None, 
     ims = []
 
     im = ax.imshow(dh_[0], extent=nice_ext, vmin=-dh_max, vmax=dh_max, cmap=cmap)
-    ann = ax.annotate(times[0], xy=(0.05, 0.05), xycoords='axes fraction', fontsize=20,
+    if rates:
+        annot = times[0]+'-'+times[1]
+    else:
+        annot = times[0]
+    ann = ax.annotate(annot, xy=(0.05, 0.05), xycoords='axes fraction', fontsize=20,
                       fontweight='bold', color='black', family='monospace')
     ims.append([im, ann])
 
+    tmp_geoimg = st.make_geoimg(ds)
+    df = geopandas.read_file(fn_shp).to_crs({'init':'epsg:'+str(tmp_geoimg.epsg)})
+    fig, _ = plot_polygon_df(df,fig=fig,ax=ax,facecolor='None',edgecolor='black',zorder=30)
     divider = make_axes_locatable(ax)
     cax = divider.append_axes("right", size="5%", pad=0.05)
     plt.colorbar(im, cax=cax, extend='both')
+
 
     cax.set_ylabel('elevation change (m)')
     ax.set_ylabel(ylbl)
     ax.set_xlabel(xlbl)
 
-    for i in range(len(times[1:])):
+    if rates:
+        l = len(times[1:])-1
+    else:
+        l = len(times[1:])
+    for i in range(l):
         im = ax.imshow(dh_[i + 1], vmin=-dh_max, vmax=dh_max, cmap=cmap, extent=nice_ext)
-        ann = ax.annotate(times[i + 1], xy=(0.05, 0.05), xycoords='axes fraction', fontsize=20,
+        if rates:
+            annot = times[i+1] + '-' + times[i+2]
+        else:
+            annot = times[i+1]
+        ann = ax.annotate(annot, xy=(0.05, 0.05), xycoords='axes fraction', fontsize=20,
                           fontweight='bold', color='black', family='monospace')
         ims.append([im, ann])
+
+    plt.tight_layout()
 
     return fig, ims
 
