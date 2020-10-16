@@ -17,6 +17,7 @@ from dask.diagnostics import ProgressBar
 import pandas as pd
 import functools
 import xarray as xr
+import geopandas
 import matplotlib.pylab as plt
 import multiprocessing as mp
 import matplotlib
@@ -39,6 +40,7 @@ from pybob.coreg_tools import get_slope
 from pybob.image_tools import create_mask_from_shapefile
 from pybob.plot_tools import set_pretty_fonts
 from pybob.bob_tools import mkdir_p
+from pybob.plot_tools import plot_polygon_df
 import pyddem.stack_tools as st
 import pyddem.tdem_tools as tt
 import pyddem.vector_tools as vt
@@ -48,7 +50,7 @@ from warnings import filterwarnings
 filterwarnings('ignore')
 
 
-def make_dh_animation(ds, month_a_year=None, rates=False, figsize=(10,10), t0=None, t1=None, dh_max=20, var='z', cmap='RdYlBu',
+def make_dh_animation(ds, fn_shp=None,month_a_year=None, rates=False, figsize=(10,10), t0=None, t1=None, dh_max=20, var='z', cmap='RdYlBu',
                       xlbl='easting (km)',
                       ylbl='northing (km)'):
     """
@@ -112,9 +114,13 @@ def make_dh_animation(ds, month_a_year=None, rates=False, figsize=(10,10), t0=No
                       fontweight='bold', color='black', family='monospace')
     ims.append([im, ann])
 
+    tmp_geoimg = st.make_geoimg(ds)
+    df = geopandas.read_file(fn_shp).to_crs({'init':'epsg:'+str(tmp_geoimg.epsg)})
+    fig, _ = plot_polygon_df(df,fig=fig,ax=ax,facecolor='None',edgecolor='black',zorder=30)
     divider = make_axes_locatable(ax)
     cax = divider.append_axes("right", size="5%", pad=0.05)
     plt.colorbar(im, cax=cax, extend='both')
+
 
     cax.set_ylabel('elevation change (m)')
     ax.set_ylabel(ylbl)
