@@ -14,6 +14,7 @@
 #
 import os
 import sys
+from sphinx.builders.html import StandaloneHTMLBuilder
 from unittest.mock import MagicMock
 
 
@@ -22,6 +23,13 @@ class Mock(MagicMock):
     def __getattr__(cls, name):
         return MagicMock()
 
+
+StandaloneHTMLBuilder.supported_image_types = [
+    'image/gif',
+    'image/svg+xml',
+    'image/png',
+    'image/jpeg'
+]
 
 autodoc_mock_imports = ['numpy', 'scipy', 'matplotlib', 'fiona', 'cv2', 'pyvips', 'lxml', 'matplotlib.pyplot',
                         'shapely', 'opencv-python', 'pandas', 'geopandas', 'fiona.crs', 'scipy.interpolate',
