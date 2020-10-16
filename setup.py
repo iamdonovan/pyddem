@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(name='pyddem',
-      version='0.1',
+      version='0.1.1',
       description='pyddem is a python package for processing time series of elevation measurements',
       url='https://github.com/iamdonovan/pyddem',
       author='Romain Hugonnet and Bob McNabb',
