@@ -48,7 +48,7 @@ from warnings import filterwarnings
 filterwarnings('ignore')
 
 
-def make_dh_animation(ds, month_a_year=None, figsize=(8, 10), t0=None, t1=None, dh_max=20, var='z', cmap='RdYlBu',
+def make_dh_animation(ds, month_a_year=None, rates=False, figsize=(10,10), t0=None, t1=None, dh_max=20, var='z', cmap='RdYlBu',
                       xlbl='easting (km)',
                       ylbl='northing (km)'):
     """
@@ -56,6 +56,7 @@ def make_dh_animation(ds, month_a_year=None, figsize=(8, 10), t0=None, t1=None, 
 
        :param ds: xarray Dataset of elevation time series
        :param month_a_year: Numerical month to keep only one month per year in the animation
+       :param rates: Display rates instead of cumulative change
        :param figsize: Tuple of figure size
        :param t0: Starting date
        :param t1: End date
@@ -91,7 +92,10 @@ def make_dh_animation(ds, month_a_year=None, figsize=(8, 10), t0=None, t1=None, 
         # mid = int(np.floor(len(ds_sub.time.values)/2))
 
     if var == 'z':
-        dh_ = ds_sub.variables[var].values - ds_sub.variables[var].values[0]
+        if rates:
+            dh_ = np.diff(ds_sub.variables[var].values,axis=0)
+        else:
+            dh_ = ds_sub.variables[var].values - ds_sub.variables[var].values[0]
     elif var == 'z_ci':
         dh_ = ds_sub.variables[var].values
 
@@ -100,7 +104,11 @@ def make_dh_animation(ds, month_a_year=None, figsize=(8, 10), t0=None, t1=None, 
     ims = []
 
     im = ax.imshow(dh_[0], extent=nice_ext, vmin=-dh_max, vmax=dh_max, cmap=cmap)
-    ann = ax.annotate(times[0], xy=(0.05, 0.05), xycoords='axes fraction', fontsize=20,
+    if rates:
+        annot = times[0]+'-'+times[1]
+    else:
+        annot = times[0]
+    ann = ax.annotate(annot, xy=(0.05, 0.05), xycoords='axes fraction', fontsize=20,
                       fontweight='bold', color='black', family='monospace')
     ims.append([im, ann])
 
@@ -112,11 +120,21 @@ def make_dh_animation(ds, month_a_year=None, figsize=(8, 10), t0=None, t1=None, 
     ax.set_ylabel(ylbl)
     ax.set_xlabel(xlbl)
 
-    for i in range(len(times[1:])):
+    if rates:
+        l = len(times[1:])-1
+    else:
+        l = len(times[1:])
+    for i in range(l):
         im = ax.imshow(dh_[i + 1], vmin=-dh_max, vmax=dh_max, cmap=cmap, extent=nice_ext)
-        ann = ax.annotate(times[i + 1], xy=(0.05, 0.05), xycoords='axes fraction', fontsize=20,
+        if rates:
+            annot = times[i+1] + '-' + times[i+2]
+        else:
+            annot = times[i+1]
+        ann = ax.annotate(annot, xy=(0.05, 0.05), xycoords='axes fraction', fontsize=20,
                           fontweight='bold', color='black', family='monospace')
         ims.append([im, ann])
+
+    plt.tight_layout()
 
     return fig, ims
 
