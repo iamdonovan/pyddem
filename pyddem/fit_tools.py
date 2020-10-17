@@ -248,6 +248,9 @@ def get_full_dh(ds, outname, t0=None, t1=None):
     dh[ind] = np.nan
     err[ind] = np.nan
 
+    mkdir_p(os.path.join(os.path.dirname(outname), 'dh'))
+    mkdir_p(os.path.join(os.path.dirname(outname), 'dh_err'))
+
     period = str(t0) + '_' + str(t1)
     tmp_img.img = dh
     tmp_img.write(os.path.join(os.path.dirname(outname), 'dh', os.path.basename(outname) + '_'+period+'_dh.tif'))
