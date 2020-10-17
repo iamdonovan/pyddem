@@ -233,30 +233,26 @@ def get_dem_date_exact(ds, t, outname):
     tmp_img.write(os.path.join(os.path.dirname(outname), os.path.basename(outname) + '_ASTER_recons_h.tif'))
 
 
-def get_full_dh(ds, t0, t1, outname):
+def get_full_dh(ds, outname, t0=None, t1=None):
     tmp_img = st.make_geoimg(ds)
+
+    #filter pixel with 2000-2019 error superior than 500 m (very large, because it is overestimated in many instances)
+    err_tot = np.sqrt(ds.variables['z_ci'].values[-1] ** 2 + ds.variables['z_ci'].values[0] ** 2)
+    ind = err_tot > 500.
 
     dc = ds.sel(time=slice(t0, t1))
 
     dh = dc.variables['z'].values[-1] - dc.variables['z'].values[0]
     err = np.sqrt(dc.variables['z_ci'].values[-1] ** 2 + dc.variables['z_ci'].values[0] ** 2)
 
-    ind = err > 500.
     dh[ind] = np.nan
-    # err_mid = dc.variables['z_ci'].values[int(dc.z.shape[0]/2)]
-    err_mid = np.nanmean(dc.variables['z_ci'].values, axis=0)
+    err[ind] = np.nan
 
-    # slope = ds.slope.values
-
+    period = str(t0) + '_' + str(t1)
     tmp_img.img = dh
-    tmp_img.write(os.path.join(os.path.dirname(outname), os.path.basename(outname) + '_dh.tif'))
+    tmp_img.write(os.path.join(os.path.dirname(outname), 'dh', os.path.basename(outname) + '_'+period+'_dh.tif'))
     tmp_img.img = err
-    tmp_img.write(os.path.join(os.path.dirname(outname), os.path.basename(outname) + '_err.tif'))
-    # tmp_img.img = err_mid
-    # tmp_img.write(os.path.join(os.path.dirname(outname),os.path.basename(outname)+'_errmid.tif'))
-    # tmp_img.img = slope
-    # tmp_img.write(os.path.join(os.path.dirname(outname),os.path.basename(outname)+'_slope.tif'))
-
+    tmp_img.write(os.path.join(os.path.dirname(outname), 'dh_err',os.path.basename(outname) + '_'+period+'_dh_err.tif'))
 
 def reproj_build_vrt(list_dh, utm, out_vrt, res):
     epsg = vt.epsg_from_utm(utm)
