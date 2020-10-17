@@ -1366,7 +1366,7 @@ def df_int_to_base(infile,fn_base=None):
 
 def df_int_to_reg(infile,nproc=1):
     """
-    Wrapper for integrating volume change time series and write to .csv
+    Wrapper for integrating volume change time series per region (based on RGI number) and write to .csv
 
     :param infile: DataFrame of integrated volume time series
     :param nproc: Number of cores used for multiprocessing [1]
@@ -1523,6 +1523,12 @@ def aggregate_all_to_period(df,list_tlim=None,mult_ann=None,fn_tarea=None,frac_a
 
 def aggregate_indep_regions(df_p):
 
+    """
+    Aggregate regions with independent assumptions for uncertainty propagation
+    :param df_p:
+    :return:
+    """
+
     # GLOBAL TOTAL
     area_global = np.nansum(df_p.area.values)
     area_nodata_global = np.nansum(df_p.area_nodata.values)
@@ -1636,7 +1642,7 @@ def wrapper_tile_int_to_all_to_mult_ann(argsin):
 
 def df_all_base_to_tile(list_fn_int_base,fn_base,tile_size=1,nproc=1,sort_tw=True):
     """
-    Integrate all concatenated per-glacier volume change time series on a global tiling of certain size, for all possible 1-,2-,4-,5-,10- and 20-year periods, with error propagation
+    Integrate all per-glacier volume change time series on a global tiling of certain size, for all possible 1-,2-,4-,5-,10- and 20-year periods, with error propagation
 
     :param list_fn_int_base: List of filename of DataFrame of per-glacier volume change time series with base RGIID info added
     :param fn_base: Filename of "base" RGI file
@@ -1858,3 +1864,86 @@ def aggregate_df_int_time(infile,tlim=None,rate=False):
 
     return df_gla
 
+def aggregate_int_to_shp(df,fn_shp,list_tlim=None,mult_ann=None,field_name='FULL_NAME',code_name='RGI_CODE',sort_tw=False,fn_base=None,fn_tarea=None):
+
+    ds_shp_in = ogr.GetDriverByName('ESRI Shapefile').Open(fn_shp, 0)
+    layer_in = ds_shp_in.GetLayer()
+
+    if fn_base is not None:
+        df_base = pd.read_csv(fn_base)
+
+    list_df_all = []
+    for feature in layer_in:
+        geom = feature.GetGeometryRef()
+
+        region = feature.GetField(field_name)
+        rgi_code = feature.GetField(code_name)
+
+        centroid = geom.Centroid()
+        center_lon, center_lat, _ = centroid.GetPoint()
+
+        # list_rgiid = list(set(list(df.rgiid)))
+
+        # keep only points in polygon
+        df_rgiid = df.groupby('rgiid')['lat', 'lon'].mean()
+        df_rgiid['rgiid'] = df_rgiid.index
+
+        list_subreg_rgiid = []
+        for i in np.arange(len(df_rgiid)):
+            print('Working on glacier ' + str(i + 1) + ' out of ' + str(len(df_rgiid)))
+            lat = df_rgiid.lat.values[i]
+            lon = df_rgiid.lon.values[i]
+
+            point = ogr.Geometry(ogr.wkbPoint)
+            point.AddPoint(lon, lat)
+
+            if point.Intersects(geom):
+                list_subreg_rgiid.append(df_rgiid.rgiid.values[i])
+
+        if sort_tw:
+            ind_tw = np.logical_or(df_base.term == 1, df_base.term == 5)
+            keep_tw = list(df_base.rgiid[ind_tw])
+            keep_ntw = list(df_base.rgiid[~ind_tw])
+            list_keeps = [keep_tw, keep_ntw, list(df_base.rgiid)]
+            name_keeps = ['tw', 'ntw', 'all']
+        else:
+            list_keeps = [list_subreg_rgiid]
+            name_keeps = ['all']
+
+        for keeps in list_keeps:
+
+            subset = [rgiid for rgiid in list_subreg_rgiid if rgiid in keeps]
+
+            df_subreg_int = df[df.rgiid.isin(subset)]
+
+            if len(df_subreg_int) == 0:
+                continue
+
+            df_subreg_reg = aggregate_int_to_all(df_subreg_int, get_corr_err=True)
+            df_subreg_reg['time'] = df_subreg_reg.index.values
+
+            if len(df_subreg_reg) == 0:
+                continue
+
+            subreg_area = df_subreg_reg.area.values[0]
+            # frac_area = subreg_area / regional_area
+            frac_area = None
+
+            list_df_mult = []
+            for mult_ann in [1, 2, 4, 5, 10, 20]:
+                df_mult = aggregate_all_to_period(df_subreg_reg, list_tlim=list_tlim, mult_ann=mult_ann, fn_tarea=fn_tarea,
+                                                     frac_area=frac_area)
+                list_df_mult.append(df_mult)
+
+            df_mult_all = pd.concat(list_df_mult)
+            df_mult_all['subreg'] = region
+            df_mult_all['lon_reg'] = center_lon
+            df_mult_all['lat_reg'] = center_lat
+            df_mult_all['category'] = name_keeps[list_keeps.index(keeps)]
+            df_mult_all['frac_area'] = frac_area
+
+            list_df_all.append(df_mult_all)
+
+    df_in_shp = pd.concat(list_df_all)
+
+    return df_in_shp
