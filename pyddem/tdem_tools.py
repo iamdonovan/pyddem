@@ -1366,7 +1366,7 @@ def df_int_to_base(infile,fn_base=None):
 
 def df_int_to_reg(infile,nproc=1):
     """
-    Wrapper for integrating volume change time series and write to .csv
+    Wrapper for integrating volume change time series per region (based on RGI number) and write to .csv
 
     :param infile: DataFrame of integrated volume time series
     :param nproc: Number of cores used for multiprocessing [1]
@@ -1384,39 +1384,43 @@ def df_int_to_reg(infile,nproc=1):
     df_tot.to_csv(fn_reg_out)
 
 
-def aggregate_all_to_multiannual(df,mult_ann=1,fn_tarea=None,frac_area=None):
+def aggregate_all_to_period(df,list_tlim=None,mult_ann=None,fn_tarea=None,frac_area=None,list_tag=None):
     """
-    Temporal integration of volume change time series into multi-annual change rates and error propagation
+    Temporal integration of volume change time series into rates for a specific period and error propagation
     For regions, we can account for time-varying areas by approximated per-region annual areas (Zemp et al. (2019))
 
     :param df: DataFrame of volume time series
-    :param mult_ann: Year length for temporal integration
+    :param list_tlim: List of tuples or early and late date to integrate over
+    :param mult_ann: Ignore tuples, integrate over all successive multi-annual periods of this length (e.g., four successive 5-year rates)
     :param fn_tarea: Filename of DataFrame with temporally-varying areas
     :param frac_area: Use only a corresponding fraction of the regional area to estimate time-varying areas (e.g., subset of Greenland, or other)
+    :param list_tag: Tag a naming to each integration period
 
     :returns: DataFrame of volume change rates for all successive periods fitting the year length
     """
 
     if np.count_nonzero(~np.isnan(df.dh))==0:
         df_mult_ann = pd.DataFrame()
-        # df_mult_ann['reg'] = df.reg.values[0]
-        # df_mult_ann['perc_area_meas'] = df.perc_area_meas.values[0]
-        # df_mult_ann['perc_area_res'] = df.perc_area_res.values[0]
-        # df_mult_ann['area_nodata'] = df.area_nodata.values[0]
-        # df_mult_ann['area'] = df.area.values[0]
         return df_mult_ann
 
-    # find closest annual dates to monthly time series
-    nb_period = int(np.floor(20 / mult_ann))
-    tlim = [np.datetime64(str(2000 + mult_ann * i) + '-01-01') for i in range(nb_period + 1)]
+    if list_tlim is None and mult_ann is None:
+        print('Exiting: need to provide either a time interval (tlim) or a year length (mult_ann)')
+
+    if mult_ann is not None:
+        print('Multi-annual: ignoring list of time periods')
+        nb_period = int(np.floor(20 / mult_ann))
+        list_tlim = [(np.datetime64(str(2000 + mult_ann * i) + '-01-01'),np.datetime64(str(2000 + mult_ann * (i+1)) + '-01-01')) for i in range(nb_period)]
+
+    list_closest_dates = []
     times = sorted(list(set(list(df['time']))))
     df_time = pd.DataFrame()
     df_time = df_time.assign(time=times)
     df_time.index = pd.DatetimeIndex(pd.to_datetime(times))
-    closest_dates = []
-    for tl in tlim:
-        time_clos = df_time.iloc[df_time.index.get_loc(pd.to_datetime(tl), method='nearest')][0]
-        closest_dates.append(time_clos)
+    for tl in list_tlim:
+        early_time_clos = df_time.iloc[df_time.index.get_loc(pd.to_datetime(tl[0]), method='nearest')][0]
+        late_time_clos = df_time.iloc[df_time.index.get_loc(pd.to_datetime(tl[1]), method='nearest')][0]
+
+        list_closest_dates.append((early_time_clos,late_time_clos))
 
     reg = df.reg.values[0]
 
@@ -1432,26 +1436,37 @@ def aggregate_all_to_multiannual(df,mult_ann=1,fn_tarea=None,frac_area=None):
             tmp_tarea = df_tarea['RGI' + str(int(reg))].values
 
         if frac_area is not None:
-            tmp_tarea = frac_area*tmp_tarea
+            tmp_tarea = frac_area * tmp_tarea
 
-        tarea = np.zeros(len(tlim))
-        for i in range(nb_period + 1):
+        #list corresponding to tuples of early and late date (to later derive mean area of two periods)
+        list_tarea = []
+        for i in range(len(list_tlim)):
             # getting years 2000 to 2020
-            ind = df_tarea['YEAR'] == 2000 + i * mult_ann
-            tarea[i] = tmp_tarea[ind][0] * 1000000
-    else:
-        tarea = np.repeat(df.area.values[0], len(tlim))
+            ind = df_tarea['YEAR'] == list_tlim[i][0].astype(object).year
+            early_tarea = tmp_tarea[ind][0] * 1000000
 
-    # derive dh rates
-    list_tarea, list_dhdt, list_err_dhdt, list_dvoldt, list_err_dvoldt, list_dmdt, list_err_dmdt, list_valid_obs, list_dt, list_valid_obs_py = ([] for i in range(10))
-    for i in range(len(tlim) - 1):
+            ind = df_tarea['YEAR'] == list_tlim[i][1].astype(object).year
+            late_tarea = tmp_tarea[ind][0] * 1000000
+
+            list_tarea.append((early_tarea,late_tarea))
+    else:
+        list_tarea =[(df.area.values[0],df.area.values[0]) for i in range(len(list_tlim))]
+
+    list_midtarea, list_dhdt, list_err_dhdt, list_dvoldt, list_err_dvoldt, list_dmdt, list_err_dmdt, list_valid_obs, list_dt, list_valid_obs_py, list_dmdtda, list_err_dmdtda = (
+    [] for i in range(12))
+    for i in range(len(list_tlim)):
         # derive volume change for subperiod
+
+        tlim = list_tlim[i]
+
+        mult_ann = tlim[1].astype(object).year - tlim[0].astype(object).year
+
         area = df.area.values[0]
-        dvol = (df[df.time == closest_dates[i + 1]].dvol.values - df[df.time == closest_dates[i]].dvol.values)[0]
+        dvol = (df[df.time == list_closest_dates[i][1]].dvol.values - df[df.time == list_closest_dates[i][0]].dvol.values)[0]
         dh = dvol / area
 
         err_dh = np.sqrt(
-            df[df.time == closest_dates[i + 1]].err_dh.values[0] ** 2 + df[df.time == closest_dates[i]].err_dh.values[
+            df[df.time == list_closest_dates[i][1]].err_dh.values[0] ** 2 + df[df.time == list_closest_dates[i][0]].err_dh.values[
                 0] ** 2)
         err_dvol = np.sqrt((err_dh * area) ** 2 + (dh * df.perc_err_cont.values[0] / 100. * area) ** 2)
 
@@ -1459,34 +1474,44 @@ def aggregate_all_to_multiannual(df,mult_ann=1,fn_tarea=None,frac_area=None):
         err_dvoldt = err_dvol / mult_ann
 
         dmdt = dvol * 0.85 / 10 ** 9 / mult_ann
+
         err_dmdt = np.sqrt((err_dvol * 0.85 / 10 ** 9) ** 2 + (
                 dvol * 0.06 / 10 ** 9) ** 2) / mult_ann
 
-        linear_area = (tarea[i] + tarea[i + 1]) / 2
+        linear_area = (list_tarea[i][0] + list_tarea[i][1]) / 2
         dhdt = dvol / linear_area / mult_ann
         perc_err_linear_area = 1. / 100
         err_dhdt = np.sqrt((err_dvol / linear_area) ** 2 \
                            + (perc_err_linear_area * linear_area * dvol / linear_area ** 2) ** 2) / mult_ann
 
-        ind = np.logical_and(df.time >= closest_dates[i], df.time < closest_dates[i + 1])
+        dmdtda = dmdt / linear_area * 10**9
+        err_dmdtda = np.sqrt((err_dmdt * 10**9 / linear_area) ** 2 \
+                           + (perc_err_linear_area * linear_area * dmdt * 10**9/ linear_area ** 2) ** 2)
+
+
+        ind = np.logical_and(df.time >= list_closest_dates[i][0], df.time < list_closest_dates[i][1])
         valid_obs = np.nansum(df.valid_obs[ind].values)
         valid_obs_py = np.nansum(df.valid_obs_py[ind].values)
 
-        list_tarea.append(linear_area)
+        list_midtarea.append(linear_area)
         list_dhdt.append(dhdt)
         list_err_dhdt.append(err_dhdt)
         list_dvoldt.append(dvoldt)
         list_err_dvoldt.append(err_dvoldt)
         list_dmdt.append(dmdt)
         list_err_dmdt.append(err_dmdt)
-        list_dt.append(str(tlim[i]) + '_' + str(tlim[i + 1]))
+        list_dmdtda.append(dmdtda)
+        list_err_dmdtda.append(err_dmdtda)
+        list_dt.append(str(tlim[0]) + '_' + str(tlim[1]))
         list_valid_obs.append(valid_obs)
         list_valid_obs_py.append(valid_obs_py)
 
     df_mult_ann = pd.DataFrame()
-    df_mult_ann = df_mult_ann.assign(period=list_dt, tarea=list_tarea, dhdt=list_dhdt, err_dhdt=list_err_dhdt,
+    df_mult_ann = df_mult_ann.assign(period=list_dt, tarea=list_midtarea, dhdt=list_dhdt, err_dhdt=list_err_dhdt,
                                      dvoldt=list_dvoldt, err_dvoldt=list_err_dvoldt, dmdt=list_dmdt,
-                                     err_dmdt=list_err_dmdt, valid_obs=list_valid_obs, valid_obs_py =list_valid_obs_py)
+                                     err_dmdt=list_err_dmdt, dmdtda=list_dmdtda,err_dmdtda=list_err_dmdtda,valid_obs=list_valid_obs, valid_obs_py=list_valid_obs_py)
+    if list_tag is not None:
+        df_mult_ann['tag'] = list_tag
     df_mult_ann['reg'] = reg
     df_mult_ann['perc_area_meas'] = df.perc_area_meas.values[0]
     df_mult_ann['perc_area_res'] = df.perc_area_res.values[0]
@@ -1496,7 +1521,50 @@ def aggregate_all_to_multiannual(df,mult_ann=1,fn_tarea=None,frac_area=None):
     return df_mult_ann
 
 
-def df_region_to_periods(infile_reg,fn_tarea=None,frac_area=None):
+def aggregate_indep_regions(df_p):
+
+    """
+    Aggregate regions with independent assumptions for uncertainty propagation
+    :param df_p:
+    :return:
+    """
+
+    # GLOBAL TOTAL
+    area_global = np.nansum(df_p.area.values)
+    area_nodata_global = np.nansum(df_p.area_nodata.values)
+    tarea_global = np.nansum(df_p.tarea.values)
+
+    dmdt_global = np.nansum(df_p.dmdt.values)
+    err_dmdt_global = np.sqrt(np.nansum(df_p.err_dmdt.values ** 2))
+
+    dvoldt_global = np.nansum(df_p.dvoldt.values)
+    err_dvoldt_global = np.sqrt(np.nansum(df_p.err_dvoldt.values ** 2))
+
+    err_tarea_global = np.sqrt(np.nansum((1 / 100. * df_p.tarea.values) ** 2))
+    dhdt_global = np.nansum(df_p.dvoldt.values) / tarea_global
+    err_dhdt_global = np.sqrt(
+        (err_dvoldt_global / tarea_global) ** 2 + (err_tarea_global * dvoldt_global / (tarea_global ** 2)) ** 2)
+
+    dmdtda_global = dmdt_global * 10**9/tarea_global
+    err_dmdtda_global = np.sqrt(
+        (err_dmdt_global *10**9/ tarea_global) ** 2 + (err_tarea_global * dmdt_global*10**9 / (tarea_global ** 2)) ** 2)
+
+    perc_area_res_global = np.nansum(df_p.perc_area_res.values * df_p.area.values) / np.nansum(
+        df_p.perc_area_res.values)
+    perc_area_meas_global = np.nansum(df_p.perc_area_meas.values * df_p.area.values) / np.nansum(
+        df_p.perc_area_meas.values)
+
+    valid_obs_global = np.nansum(df_p.valid_obs.values * df_p.area.values) / np.nansum(df_p.perc_area_res.values)
+    valid_obs_py_global = np.nansum(df_p.valid_obs_py.values * df_p.area.values) / np.nansum(df_p.perc_area_res.values)
+
+    df_sum = pd.DataFrame()
+    df_sum = df_sum.assign(area=[area_global],area_nodata=[area_nodata_global],dhdt=[dhdt_global],err_dhdt=[err_dhdt_global],dvoldt=[dvoldt_global],err_dvoldt=[err_dvoldt_global]
+                                 ,dmdt=[dmdt_global],err_dmdt=[err_dmdt_global],dmdtda=[dmdtda_global],err_dmdtda=[err_dmdtda_global],tarea=[tarea_global],perc_area_res=[perc_area_res_global],perc_area_meas=[perc_area_meas_global],valid_obs=[valid_obs_global]
+                                 ,valid_obs_py=[valid_obs_py_global])
+
+    return df_sum
+
+def df_region_to_multann(infile_reg, fn_tarea=None, frac_area=None):
     """
     Wrapper for temporal integration of regional volume change time series for all possible 1-,2-,4-,5-,10- and 20-year periods and write to .csv
 
@@ -1513,7 +1581,7 @@ def df_region_to_periods(infile_reg,fn_tarea=None,frac_area=None):
 
     list_df = []
     for mult_ann in [1,2,4,5,10,20]:
-        df_mult_ann = aggregate_all_to_multiannual(df,mult_ann=mult_ann,fn_tarea=fn_tarea,frac_area=frac_area)
+        df_mult_ann = aggregate_all_to_period(df,mult_ann=mult_ann,fn_tarea=fn_tarea,frac_area=frac_area)
         list_df.append(df_mult_ann)
 
     df_final = pd.concat(list_df)
@@ -1562,7 +1630,8 @@ def wrapper_tile_int_to_all_to_mult_ann(argsin):
 
     list_df_mult = []
     for mult_ann in [1, 2, 4, 5, 10, 20]:
-        df_mult = aggregate_all_to_multiannual(df_agg, mult_ann=mult_ann)
+        #TODO: for specific rates at smaller scales than region, we don't assume time-varying areas yet... somewhat inconsistent
+        df_mult = aggregate_all_to_period(df_agg, mult_ann=mult_ann)
         list_df_mult.append(df_mult)
 
     df_mult_all = pd.concat(list_df_mult)
@@ -1573,7 +1642,7 @@ def wrapper_tile_int_to_all_to_mult_ann(argsin):
 
 def df_all_base_to_tile(list_fn_int_base,fn_base,tile_size=1,nproc=1,sort_tw=True):
     """
-    Integrate all concatenated per-glacier volume change time series on a global tiling of certain size, for all possible 1-,2-,4-,5-,10- and 20-year periods, with error propagation
+    Integrate all per-glacier volume change time series on a global tiling of certain size, for all possible 1-,2-,4-,5-,10- and 20-year periods, with error propagation
 
     :param list_fn_int_base: List of filename of DataFrame of per-glacier volume change time series with base RGIID info added
     :param fn_base: Filename of "base" RGI file
@@ -1795,3 +1864,86 @@ def aggregate_df_int_time(infile,tlim=None,rate=False):
 
     return df_gla
 
+def aggregate_int_to_shp(df,fn_shp,list_tlim=None,mult_ann=None,field_name='FULL_NAME',code_name='RGI_CODE',sort_tw=False,fn_base=None,fn_tarea=None):
+
+    ds_shp_in = ogr.GetDriverByName('ESRI Shapefile').Open(fn_shp, 0)
+    layer_in = ds_shp_in.GetLayer()
+
+    if fn_base is not None:
+        df_base = pd.read_csv(fn_base)
+
+    list_df_all = []
+    for feature in layer_in:
+        geom = feature.GetGeometryRef()
+
+        region = feature.GetField(field_name)
+        rgi_code = feature.GetField(code_name)
+
+        centroid = geom.Centroid()
+        center_lon, center_lat, _ = centroid.GetPoint()
+
+        # list_rgiid = list(set(list(df.rgiid)))
+
+        # keep only points in polygon
+        df_rgiid = df.groupby('rgiid')['lat', 'lon'].mean()
+        df_rgiid['rgiid'] = df_rgiid.index
+
+        list_subreg_rgiid = []
+        for i in np.arange(len(df_rgiid)):
+            print('Working on glacier ' + str(i + 1) + ' out of ' + str(len(df_rgiid)))
+            lat = df_rgiid.lat.values[i]
+            lon = df_rgiid.lon.values[i]
+
+            point = ogr.Geometry(ogr.wkbPoint)
+            point.AddPoint(lon, lat)
+
+            if point.Intersects(geom):
+                list_subreg_rgiid.append(df_rgiid.rgiid.values[i])
+
+        if sort_tw:
+            ind_tw = np.logical_or(df_base.term == 1, df_base.term == 5)
+            keep_tw = list(df_base.rgiid[ind_tw])
+            keep_ntw = list(df_base.rgiid[~ind_tw])
+            list_keeps = [keep_tw, keep_ntw, list(df_base.rgiid)]
+            name_keeps = ['tw', 'ntw', 'all']
+        else:
+            list_keeps = [list_subreg_rgiid]
+            name_keeps = ['all']
+
+        for keeps in list_keeps:
+
+            subset = [rgiid for rgiid in list_subreg_rgiid if rgiid in keeps]
+
+            df_subreg_int = df[df.rgiid.isin(subset)]
+
+            if len(df_subreg_int) == 0:
+                continue
+
+            df_subreg_reg = aggregate_int_to_all(df_subreg_int, get_corr_err=True)
+            df_subreg_reg['time'] = df_subreg_reg.index.values
+
+            if len(df_subreg_reg) == 0:
+                continue
+
+            subreg_area = df_subreg_reg.area.values[0]
+            # frac_area = subreg_area / regional_area
+            frac_area = None
+
+            list_df_mult = []
+            for mult_ann in [1, 2, 4, 5, 10, 20]:
+                df_mult = aggregate_all_to_period(df_subreg_reg, list_tlim=list_tlim, mult_ann=mult_ann, fn_tarea=fn_tarea,
+                                                     frac_area=frac_area)
+                list_df_mult.append(df_mult)
+
+            df_mult_all = pd.concat(list_df_mult)
+            df_mult_all['subreg'] = region
+            df_mult_all['lon_reg'] = center_lon
+            df_mult_all['lat_reg'] = center_lat
+            df_mult_all['category'] = name_keeps[list_keeps.index(keeps)]
+            df_mult_all['frac_area'] = frac_area
+
+            list_df_all.append(df_mult_all)
+
+    df_in_shp = pd.concat(list_df_all)
+
+    return df_in_shp
