@@ -64,7 +64,7 @@ also models a time series of elevation using `gaussian process regression <https
 example where large surges have taken place, or where thinning has accelerated due to dynamic processes.
 
 Below are two example GIFs showing the fitted annual rate of elevation change, and the fitted cumulative elevation change
-over Mýrdalsjökull, Iceland, between 1 January 2000 an 31 December 2019. It was created with an average of 68
+over Mýrdalsjökull, Iceland, between 1 January 2000 and 31 December 2019. It was created with an average of 68
 observations (ASTER DEMs and `ArcticDEM <https://www.pgc.umn.edu/data/arcticdem/>`__ [1]_, [2]_ strips) per pixel.
 
 .. image:: images/Myrdals_rate.gif
