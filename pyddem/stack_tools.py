@@ -767,8 +767,9 @@ def create_mmaster_stack(filelist, extent=None, res=None, epsg=None, outfile='mm
                 print(
                     'Adding DEM that has ' + str(nvalid) + ' valid pixels in this extent, with a global RMSE of ' + str(
                         stats_final[3]))
-            except:
+            except Exception as e:
                 print('Coregistration failed: skipping...')
+                print(e)
                 if l1a_zipped and (instru == 'AST'):
                     for fn_rm in list_fn_rm:
                         if os.path.exists(fn_rm):
@@ -802,12 +803,15 @@ def create_mmaster_stack(filelist, extent=None, res=None, epsg=None, outfile='mm
                 continue
             # zo[outind, :, :] = img.img
 
-            if uncert:
-                try:
-                    stats = read_stats(os.path.dirname(filelist[ind]))
-                except:
-                    stats = None
-                # uo[outind] = stats['RMSE']
+        if uncert:
+            try:
+                stats = read_stats(os.path.dirname(filelist[ind]))
+            except Exception as e:
+                print('Could not read stats file {}'.format(os.path.dirname(filelist[ind])))
+                stats = None
+            # uo[outind] = stats['RMSE']
+        else:
+            stats = None
         # to[outind] = datelist[ind].toordinal() - dt.date(y0, 1, 1).toordinal()
         # go[outind] = os.path.basename(filelist[ind]).rsplit('.tif', 1)[0]
         if stats is None:
