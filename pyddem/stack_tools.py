@@ -766,8 +766,6 @@ def create_mmaster_stack(filelist, extent=None, res=None, epsg=None, outfile='mm
                 if uncert:
                     uo[outind] = stats_final[3]
                 print('Adding DEM that has {} valid pixels in this extent, with a global RMSE of {}'.format(nvalid, stats_final[3]))
-                shutil.copy(os.path.join(coreg_outdir, 'stats.txt'),
-                            filelist[ind].replace('tif', 'txt'))
             except Exception as e:
                 print('Coregistration failed: skipping...')
                 print(e)
@@ -805,8 +803,12 @@ def create_mmaster_stack(filelist, extent=None, res=None, epsg=None, outfile='mm
             # zo[outind, :, :] = img.img
 
         if uncert:
+            if coreg:
+                stats_dir = os.path.join(outdir, os.path.basename(filelist[ind]).rsplit('.tif', 1)[0])
+            else:
+                stats_dir = os.path.dirname(filelist[ind])
             try:
-                stats = read_stats(os.path.dirname(filelist[ind]))
+                stats = read_stats(stats_dir)
             except Exception as e:
                 print('Could not read stats file {}'.format(os.path.dirname(filelist[ind])))
                 stats = None
