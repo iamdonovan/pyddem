@@ -3,6 +3,7 @@ pymmaster.stack_tools provides tools to create stacks of DEM data, usually MMAST
 """
 import os
 import sys
+import shutil
 
 os.environ["OMP_NUM_THREADS"] = "1"  # export OMP_NUM_THREADS=4
 os.environ["OPENBLAS_NUM_THREADS"] = "1"  # export OPENBLAS_NUM_THREADS=4
@@ -764,9 +765,9 @@ def create_mmaster_stack(filelist, extent=None, res=None, epsg=None, outfile='mm
                 zo[outind, :, :] = img.img
                 if uncert:
                     uo[outind] = stats_final[3]
-                print(
-                    'Adding DEM that has ' + str(nvalid) + ' valid pixels in this extent, with a global RMSE of ' + str(
-                        stats_final[3]))
+                print('Adding DEM that has {} valid pixels in this extent, with a global RMSE of {}'.format(nvalid, stats_final[3]))
+                shutil.copy(os.path.join(coreg_outdir, 'stats.txt'),
+                            filelist[ind].replace('tif', 'txt'))
             except Exception as e:
                 print('Coregistration failed: skipping...')
                 print(e)
