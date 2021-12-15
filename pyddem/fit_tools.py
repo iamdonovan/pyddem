@@ -12,7 +12,7 @@ os.environ["VECLIB_MAXIMUM_THREADS"] = "1"  # export VECLIB_MAXIMUM_THREADS=4
 os.environ["NUMEXPR_NUM_THREADS"] = "1"  # export NUMEXPR_NUM_THREADS=6
 os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
 import numpy as np
-import gdal
+from osgeo import gdal
 from dask.diagnostics import ProgressBar
 import pandas as pd
 import functools

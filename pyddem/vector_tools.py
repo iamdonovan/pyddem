@@ -6,7 +6,7 @@ import sys
 import numpy as np
 import pandas as pd
 from datetime import datetime
-import gdal, ogr, osr, gdalconst
+from osgeo import gdal, ogr, osr, gdalconst
 
 def SRTMGL1_naming_to_latlon(tile_name):
     """
