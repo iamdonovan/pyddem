@@ -826,7 +826,10 @@ def create_mmaster_stack(filelist, extent=None, res=None, epsg=None, outfile='mm
                 print('KeyError for RMSE here:' + filelist[ind])
                 continue
         list_img.append(img.img)
-        list_corr.append(corr.img.astype(np.int8))
+
+        if add_corr:
+            list_corr.append(corr.img.astype(np.int8))
+
         list_dt.append(datelist[ind].toordinal() - dt.date(y0, 1, 1).toordinal())
         list_name.append(os.path.basename(filelist[ind]).rsplit('.tif', 1)[0])
         outind += 1
