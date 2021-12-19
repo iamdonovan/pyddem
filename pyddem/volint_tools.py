@@ -1,5 +1,5 @@
 """
-pymmaster.volint_tools provides tools to integrate elevation change into volume time series,
+pyddem.volint_tools provides tools to integrate elevation change into volume time series,
 adapted from `McNabb et al. (2019)`_.
 
 .. _McNabb et al. (2019): https://tc.copernicus.org/articles/13/895/2019/

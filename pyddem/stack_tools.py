@@ -1,5 +1,5 @@
 """
-pymmaster.stack_tools provides tools to create stacks of DEM data, usually MMASTER DEMs.
+pyddem.stack_tools provides tools to create stacks of DEM data, usually MMASTER DEMs.
 """
 import os
 import sys

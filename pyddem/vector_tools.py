@@ -1,5 +1,5 @@
 """
-pymmaster.vector_tools provides tools to manipulate tilings (naming, extents) and vectors (rasterize, buffer, transform, ...)
+pyddem.vector_tools provides tools to manipulate tilings (naming, extents) and vectors (rasterize, buffer, transform, ...)
 """
 import os
 import sys
