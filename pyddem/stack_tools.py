@@ -841,7 +841,9 @@ def create_mmaster_stack(filelist, extent=None, res=None, epsg=None, outfile='mm
 
     # then write all at once
     zo[0:outind, :, :] = np.stack(list_img, axis=0)
-    co[0:outind, :, :] = np.stack(list_corr, axis=0)
+    # if we're not adding the correlation images, we shouldn't add the correlation images.
+    if add_corr:
+        co[0:outind, :, :] = np.stack(list_corr, axis=0)
     uo[0:outind] = np.array(list_uncert)
     to[0:outind] = np.array(list_dt)
     go[0:outind] = np.array(list_name)
