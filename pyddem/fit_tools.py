@@ -2184,7 +2184,7 @@ def fit_stack(fn_stack, fit_extent=None, fn_ref_dem=None, ref_dem_date=None, fil
     if fn_ref_dem is not None:
         assert filt_ref in ['min_max', 'time', 'both'], "fn_ref must be one of: min_max, time, both"
         ds_arr = prefilter_stack(ds, ds_arr, fn_ref_dem, t_vals, filt_ref=filt_ref, ref_dem_date=ref_dem_date,
-                                 time_filt_thresh=time_filt_thresh, nproc=nproc)
+                                 max_dhdt=time_filt_thresh, nproc=nproc)
         print('Elapsed time is ' + str(time.time() - start))
 
     # constrain variance based on manually defined dependencies
