@@ -2167,10 +2167,15 @@ def fit_stack(fn_stack, fit_extent=None, fn_ref_dem=None, ref_dem_date=None, fil
         uns_arr = None
 
     ds_arr = ds.z.values
-    ds_corr = ds.corr.values
-    # change correlation for SETSM segments
-    ind_setsm = np.array(['SETSM' in name for name in ds.dem_names.values])
-    ds_corr[ind_setsm, :] = 60.
+    if 'corr' in list(ds.keys()):
+        ds_corr = ds.corr.values
+        # change correlation for SETSM segments
+        ind_setsm = np.array(['SETSM' in name for name in ds.dem_names.values])
+        ds_corr[ind_setsm, :] = 60.
+    else:
+        # if we don't have correlation values, default to 60.
+        ds_corr = 60. * np.ones(ds_arr.shape)
+
     t_vals = ds.time.values
     uncert = ds.uncert.values
     filt_vals = (t_vals - np.datetime64('2000-01-01')).astype('timedelta64[D]').astype(int)
