@@ -2328,7 +2328,7 @@ def fit_stack(fn_stack, fit_extent=None, fn_ref_dem=None, ref_dem_date=None, fil
                     cube_to_stack(ds, filt_cube, y0, filt_vals, outfile=fn_filt, clobber=clobber, filt_bool=True,
                                   ci=False)
 
-                    return
+                return
 
         # here we use dask instead, testing only with gpr for now
         else:
