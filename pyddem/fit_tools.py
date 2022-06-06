@@ -2266,6 +2266,8 @@ def fit_stack(fn_stack, fit_extent=None, fn_ref_dem=None, ref_dem_date=None, fil
         if not dask_parallel:
             print('Using multiprocessing...')
 
+            pool = mp.Pool(nproc, maxtasksperchild=1)
+
             if method in ['ols', 'wls']:
                 # here calculation is done matricially so we want to use all cores with the largest tiles possible
                 opt_n_tiles = int(np.floor(np.sqrt(nproc)))
@@ -2279,7 +2281,6 @@ def fit_stack(fn_stack, fit_extent=None, fn_ref_dem=None, ref_dem_date=None, fil
                 n_x_tiles = np.ceil(ds['x'].shape[0] / 30).astype(int)  # break it into 10x10 tiles
                 n_y_tiles = np.ceil(ds['y'].shape[0] / 30).astype(int)
 
-                pool = mp.Pool(nproc, maxtasksperchild=1)
                 split_arr = splitter(ds_arr, (n_y_tiles, n_x_tiles))
                 split_err = splitter(err_arr, (n_y_tiles, n_x_tiles))
 
@@ -2293,6 +2294,7 @@ def fit_stack(fn_stack, fit_extent=None, fn_ref_dem=None, ref_dem_date=None, fil
                 argsin = [(s, i, np.copy(time_vals), split_err[i], np.copy(fit_t), opt_gpr, kernel, split_uns[i]) for
                           i, s in
                           enumerate(split_arr)]
+
                 outputs = pool.map(gpr_wrapper, argsin, chunksize=1)
                 pool.close()
                 pool.join()
@@ -2311,6 +2313,7 @@ def fit_stack(fn_stack, fit_extent=None, fn_ref_dem=None, ref_dem_date=None, fil
                     weig = True
                 argsin = [(s, i, np.copy(t_vals), np.copy(uncert), weig, filt_ls, conf_filt_ls) for i, s in
                           enumerate(split_arr)]
+
                 outputs = pool.map(ls_wrapper, argsin, chunksize=1)
                 pool.close()
                 pool.join()
