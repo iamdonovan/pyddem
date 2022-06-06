@@ -2275,6 +2275,7 @@ def fit_stack(fn_stack, fit_extent=None, fn_ref_dem=None, ref_dem_date=None, fil
                 n_y_tiles = opt_n_tiles
 
                 split_arr = splitter(ds_arr, (n_y_tiles, n_x_tiles))
+                split_err = splitter(err_arr, (n_y_tiles, n_x_tiles))
 
             elif method == 'gpr':
                 # here calculation is within a for loop: better to have small tiles to get an idea of the processing speed
@@ -2311,7 +2312,7 @@ def fit_stack(fn_stack, fit_extent=None, fn_ref_dem=None, ref_dem_date=None, fil
                     weig = False
                 else:
                     weig = True
-                argsin = [(s, i, np.copy(t_vals), np.copy(uncert), weig, filt_ls, conf_filt_ls) for i, s in
+                argsin = [(s, i, np.copy(t_vals), split_err[i], weig, filt_ls, conf_filt_ls) for i, s in
                           enumerate(split_arr)]
 
                 outputs = pool.map(ls_wrapper, argsin, chunksize=1)
