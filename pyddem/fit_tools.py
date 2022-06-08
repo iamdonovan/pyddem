@@ -1963,8 +1963,8 @@ def robust_wls_ref_filter_stack(ds, ds_arr, err_arr, t_vals, fn_ref_dem, ref_dem
     tmp_dem = GeoImg(fn_ref_dem)
     ref_dem = tmp_dem.reproject(tmp_geo)
     ref_arr = ref_dem.img
-    # TODO: do not hardcore resolution
-    res = 100.
+
+    res = np.mean([np.abs(np.diff(ds['x'])[0]), np.abs(np.diff(ds['y'])[0])])
     rad = int(np.floor(cutoff_kern_size / res))
 
     # wls
@@ -2178,7 +2178,10 @@ def fit_stack(fn_stack, fit_extent=None, fn_ref_dem=None, ref_dem_date=None, fil
 
     t_vals = ds.time.values
     uncert = ds.uncert.values
-    filt_vals = (t_vals - np.datetime64('2000-01-01')).astype('timedelta64[D]').astype(int)
+
+    year_zero = np.datetime64(ds['time'][0].values, 'Y').astype(object).year
+
+    filt_vals = (t_vals - np.datetime64('{}-01-01'.format(min(year_zero, 2000)))).astype('timedelta64[D]').astype(int)
 
     # pre-filtering
     if fn_ref_dem is not None:
@@ -2193,7 +2196,7 @@ def fit_stack(fn_stack, fit_extent=None, fn_ref_dem=None, ref_dem_date=None, fil
 
     if fn_ref_dem is not None:
         ds_arr = robust_wls_ref_filter_stack(ds, ds_arr, err_arr, t_vals, fn_ref_dem,
-                                             ref_dem_date=np.datetime64('2013-01-01'),
+                                             ref_dem_date=ref_dem_date,
                                              max_dhdt=time_filt_thresh, nproc=nproc, cutoff_kern_size=1000,
                                              max_deltat_ref=2.,
                                              base_thresh=100.)
