@@ -10,6 +10,7 @@ os.environ["OPENBLAS_NUM_THREADS"] = "1"  # export OPENBLAS_NUM_THREADS=4
 os.environ["MKL_NUM_THREADS"] = "1"  # export MKL_NUM_THREADS=6
 os.environ["VECLIB_MAXIMUM_THREADS"] = "1"  # export VECLIB_MAXIMUM_THREADS=4
 os.environ["NUMEXPR_NUM_THREADS"] = "1"  # export NUMEXPR_NUM_THREADS=6
+os.environ["BLIS_NUM_THREADS"] = "1"
 os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
 import numpy as np
 from osgeo import gdal
@@ -2282,8 +2283,8 @@ def fit_stack(fn_stack, fit_extent=None, fn_ref_dem=None, ref_dem_date=None, fil
 
             elif method == 'gpr':
                 # here calculation is within a for loop: better to have small tiles to get an idea of the processing speed
-                n_x_tiles = np.ceil(ds['x'].shape[0] / 10).astype(int)  # break it into 10x10 tiles
-                n_y_tiles = np.ceil(ds['y'].shape[0] / 10).astype(int)
+                n_x_tiles = np.ceil(ds['x'].shape[0] / 100).astype(int)  # break it into 100x100 tiles
+                n_y_tiles = np.ceil(ds['y'].shape[0] / 100).astype(int)
 
                 split_arr = splitter(ds_arr, (n_y_tiles, n_x_tiles))
                 split_err = splitter(err_arr, (n_y_tiles, n_x_tiles))
