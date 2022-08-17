@@ -1,12 +1,12 @@
 """
-pymmaster.vector_tools provides tools to manipulate tilings (naming, extents) and vectors (rasterize, buffer, transform, ...)
+pyddem.vector_tools provides tools to manipulate tilings (naming, extents) and vectors (rasterize, buffer, transform, ...)
 """
 import os
 import sys
 import numpy as np
 import pandas as pd
 from datetime import datetime
-import gdal, ogr, osr, gdalconst
+from osgeo import gdal, ogr, osr, gdalconst
 
 def SRTMGL1_naming_to_latlon(tile_name):
     """

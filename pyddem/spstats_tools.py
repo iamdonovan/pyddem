@@ -9,7 +9,7 @@ import skgstat as skg
 from scipy import integrate
 import multiprocessing as mp
 import pandas as pd
-import ogr
+from osgeo import ogr
 from pyddem.vector_tools import coord_trans, latlon_to_UTM
 
 def neff_sphsum_circular(area,crange1,psill1,crange2,psill2):

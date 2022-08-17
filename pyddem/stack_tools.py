@@ -1,8 +1,9 @@
 """
-pymmaster.stack_tools provides tools to create stacks of DEM data, usually MMASTER DEMs.
+pyddem.stack_tools provides tools to create stacks of DEM data, usually MMASTER DEMs.
 """
 import os
 import sys
+import shutil
 
 os.environ["OMP_NUM_THREADS"] = "1"  # export OMP_NUM_THREADS=4
 os.environ["OPENBLAS_NUM_THREADS"] = "1"  # export OPENBLAS_NUM_THREADS=4
@@ -16,9 +17,7 @@ from collections import OrderedDict
 import multiprocessing as mp
 import numpy as np
 import datetime as dt
-import gdal
-import ogr
-import gdalconst
+from osgeo import gdal, ogr, gdalconst
 import netCDF4
 import geopandas as gpd
 import xarray as xr
@@ -766,11 +765,10 @@ def create_mmaster_stack(filelist, extent=None, res=None, epsg=None, outfile='mm
                 zo[outind, :, :] = img.img
                 if uncert:
                     uo[outind] = stats_final[3]
-                print(
-                    'Adding DEM that has ' + str(nvalid) + ' valid pixels in this extent, with a global RMSE of ' + str(
-                        stats_final[3]))
-            except:
+                print('Adding DEM that has {} valid pixels in this extent, with a global RMSE of {}'.format(nvalid, stats_final[3]))
+            except Exception as e:
                 print('Coregistration failed: skipping...')
+                print(e)
                 if l1a_zipped and (instru == 'AST'):
                     for fn_rm in list_fn_rm:
                         if os.path.exists(fn_rm):
@@ -804,12 +802,19 @@ def create_mmaster_stack(filelist, extent=None, res=None, epsg=None, outfile='mm
                 continue
             # zo[outind, :, :] = img.img
 
-            if uncert:
-                try:
-                    stats = read_stats(os.path.dirname(filelist[ind]))
-                except:
-                    stats = None
-                # uo[outind] = stats['RMSE']
+        if uncert:
+            if coreg:
+                stats_dir = os.path.join(outdir, os.path.basename(filelist[ind]).rsplit('.tif', 1)[0])
+            else:
+                stats_dir = os.path.dirname(filelist[ind])
+            try:
+                stats = read_stats(stats_dir)
+            except Exception as e:
+                print('Could not read stats file {}'.format(os.path.dirname(filelist[ind])))
+                stats = None
+            # uo[outind] = stats['RMSE']
+        else:
+            stats = None
         # to[outind] = datelist[ind].toordinal() - dt.date(y0, 1, 1).toordinal()
         # go[outind] = os.path.basename(filelist[ind]).rsplit('.tif', 1)[0]
         if stats is None:
@@ -821,7 +826,10 @@ def create_mmaster_stack(filelist, extent=None, res=None, epsg=None, outfile='mm
                 print('KeyError for RMSE here:' + filelist[ind])
                 continue
         list_img.append(img.img)
-        list_corr.append(corr.img.astype(np.int8))
+
+        if add_corr:
+            list_corr.append(corr.img.astype(np.int8))
+
         list_dt.append(datelist[ind].toordinal() - dt.date(y0, 1, 1).toordinal())
         list_name.append(os.path.basename(filelist[ind]).rsplit('.tif', 1)[0])
         outind += 1
@@ -833,7 +841,9 @@ def create_mmaster_stack(filelist, extent=None, res=None, epsg=None, outfile='mm
 
     # then write all at once
     zo[0:outind, :, :] = np.stack(list_img, axis=0)
-    co[0:outind, :, :] = np.stack(list_corr, axis=0)
+    # if we're not adding the correlation images, we shouldn't add the correlation images.
+    if add_corr:
+        co[0:outind, :, :] = np.stack(list_corr, axis=0)
     uo[0:outind] = np.array(list_uncert)
     to[0:outind] = np.array(list_dt)
     go[0:outind] = np.array(list_name)

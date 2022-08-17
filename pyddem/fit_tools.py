@@ -10,9 +10,10 @@ os.environ["OPENBLAS_NUM_THREADS"] = "1"  # export OPENBLAS_NUM_THREADS=4
 os.environ["MKL_NUM_THREADS"] = "1"  # export MKL_NUM_THREADS=6
 os.environ["VECLIB_MAXIMUM_THREADS"] = "1"  # export VECLIB_MAXIMUM_THREADS=4
 os.environ["NUMEXPR_NUM_THREADS"] = "1"  # export NUMEXPR_NUM_THREADS=6
+os.environ["BLIS_NUM_THREADS"] = "1"
 os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
 import numpy as np
-import gdal
+from osgeo import gdal
 from dask.diagnostics import ProgressBar
 import pandas as pd
 import functools
@@ -1963,8 +1964,8 @@ def robust_wls_ref_filter_stack(ds, ds_arr, err_arr, t_vals, fn_ref_dem, ref_dem
     tmp_dem = GeoImg(fn_ref_dem)
     ref_dem = tmp_dem.reproject(tmp_geo)
     ref_arr = ref_dem.img
-    # TODO: do not hardcore resolution
-    res = 100.
+
+    res = np.mean([np.abs(np.diff(ds['x'])[0]), np.abs(np.diff(ds['y'])[0])])
     rad = int(np.floor(cutoff_kern_size / res))
 
     # wls
@@ -2167,19 +2168,27 @@ def fit_stack(fn_stack, fit_extent=None, fn_ref_dem=None, ref_dem_date=None, fil
         uns_arr = None
 
     ds_arr = ds.z.values
-    ds_corr = ds.corr.values
-    # change correlation for SETSM segments
-    ind_setsm = np.array(['SETSM' in name for name in ds.dem_names.values])
-    ds_corr[ind_setsm, :] = 60.
+    if 'corr' in list(ds.keys()):
+        ds_corr = ds.corr.values
+        # change correlation for SETSM segments
+        ind_setsm = np.array(['SETSM' in name for name in ds.dem_names.values])
+        ds_corr[ind_setsm, :] = 60.
+    else:
+        # if we don't have correlation values, default to 60.
+        ds_corr = 60. * np.ones(ds_arr.shape)
+
     t_vals = ds.time.values
     uncert = ds.uncert.values
-    filt_vals = (t_vals - np.datetime64('2000-01-01')).astype('timedelta64[D]').astype(int)
+
+    year_zero = np.datetime64(ds['time'][0].values, 'Y').astype(object).year
+
+    filt_vals = (t_vals - np.datetime64('{}-01-01'.format(min(year_zero, 2000)))).astype('timedelta64[D]').astype(int)
 
     # pre-filtering
     if fn_ref_dem is not None:
         assert filt_ref in ['min_max', 'time', 'both'], "fn_ref must be one of: min_max, time, both"
         ds_arr = prefilter_stack(ds, ds_arr, fn_ref_dem, t_vals, filt_ref=filt_ref, ref_dem_date=ref_dem_date,
-                                 time_filt_thresh=time_filt_thresh, nproc=nproc)
+                                 max_dhdt=time_filt_thresh, nproc=nproc)
         print('Elapsed time is ' + str(time.time() - start))
 
     # constrain variance based on manually defined dependencies
@@ -2188,7 +2197,7 @@ def fit_stack(fn_stack, fit_extent=None, fn_ref_dem=None, ref_dem_date=None, fil
 
     if fn_ref_dem is not None:
         ds_arr = robust_wls_ref_filter_stack(ds, ds_arr, err_arr, t_vals, fn_ref_dem,
-                                             ref_dem_date=np.datetime64('2013-01-01'),
+                                             ref_dem_date=ref_dem_date,
                                              max_dhdt=time_filt_thresh, nproc=nproc, cutoff_kern_size=1000,
                                              max_deltat_ref=2.,
                                              base_thresh=100.)
@@ -2261,17 +2270,22 @@ def fit_stack(fn_stack, fit_extent=None, fn_ref_dem=None, ref_dem_date=None, fil
         if not dask_parallel:
             print('Using multiprocessing...')
 
+            pool = mp.Pool(nproc, maxtasksperchild=1)
+
             if method in ['ols', 'wls']:
                 # here calculation is done matricially so we want to use all cores with the largest tiles possible
                 opt_n_tiles = int(np.floor(np.sqrt(nproc)))
                 n_x_tiles = opt_n_tiles
                 n_y_tiles = opt_n_tiles
+
+                split_arr = splitter(ds_arr, (n_y_tiles, n_x_tiles))
+                split_err = splitter(err_arr, (n_y_tiles, n_x_tiles))
+
             elif method == 'gpr':
                 # here calculation is within a for loop: better to have small tiles to get an idea of the processing speed
-                n_x_tiles = np.ceil(ds['x'].shape[0] / 30).astype(int)  # break it into 10x10 tiles
-                n_y_tiles = np.ceil(ds['y'].shape[0] / 30).astype(int)
+                n_x_tiles = np.ceil(ds['x'].shape[0] / 100).astype(int)  # break it into 100x100 tiles
+                n_y_tiles = np.ceil(ds['y'].shape[0] / 100).astype(int)
 
-                pool = mp.Pool(nproc, maxtasksperchild=1)
                 split_arr = splitter(ds_arr, (n_y_tiles, n_x_tiles))
                 split_err = splitter(err_arr, (n_y_tiles, n_x_tiles))
 
@@ -2285,6 +2299,7 @@ def fit_stack(fn_stack, fit_extent=None, fn_ref_dem=None, ref_dem_date=None, fil
                 argsin = [(s, i, np.copy(time_vals), split_err[i], np.copy(fit_t), opt_gpr, kernel, split_uns[i]) for
                           i, s in
                           enumerate(split_arr)]
+
                 outputs = pool.map(gpr_wrapper, argsin, chunksize=1)
                 pool.close()
                 pool.join()
@@ -2301,8 +2316,9 @@ def fit_stack(fn_stack, fit_extent=None, fn_ref_dem=None, ref_dem_date=None, fil
                     weig = False
                 else:
                     weig = True
-                argsin = [(s, i, np.copy(t_vals), np.copy(uncert), weig, filt_ls, conf_filt_ls) for i, s in
+                argsin = [(s, i, np.copy(t_vals), split_err[i], weig, filt_ls, conf_filt_ls) for i, s in
                           enumerate(split_arr)]
+
                 outputs = pool.map(ls_wrapper, argsin, chunksize=1)
                 pool.close()
                 pool.join()
@@ -2315,6 +2331,8 @@ def fit_stack(fn_stack, fit_extent=None, fn_ref_dem=None, ref_dem_date=None, fil
                     filt_cube = stitcher(zip_out[1], (n_y_tiles, n_x_tiles))
                     cube_to_stack(ds, filt_cube, y0, filt_vals, outfile=fn_filt, clobber=clobber, filt_bool=True,
                                   ci=False)
+
+                return
 
         # here we use dask instead, testing only with gpr for now
         else:

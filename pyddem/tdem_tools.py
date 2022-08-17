@@ -1,5 +1,5 @@
 """
-pymmaster.tdem_tools provides tools to post-process DEM stacks: volume integration over specific outlines, comparison to point data, spatial aggregation...
+pyddem.tdem_tools provides tools to post-process DEM stacks: volume integration over specific outlines, comparison to point data, spatial aggregation...
 """
 import xarray as xr
 import os
@@ -10,9 +10,7 @@ from itertools import groupby
 from operator import itemgetter
 import multiprocessing as mp
 from scipy.interpolate import interp1d
-import gdal
-import osr
-import ogr
+from osgeo import gdal, osr, ogr
 import pyproj
 import time
 from datetime import datetime as dt
