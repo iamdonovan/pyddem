@@ -2135,6 +2135,9 @@ def fit_stack(fn_stack, fit_extent=None, fn_ref_dem=None, ref_dem_date=None, fil
         xmin, xmax, ymin, ymax = fit_extent
         ds = ds.sel(x=slice(xmin, xmax), y=slice(ymin, ymax))
 
+    if tlim is not None:
+        ds = ds.sel(time=slice(tlim[0], tlim[1]))
+
     print('Original temporal size of stack is ' + str(ds.time.size))
     print('Original spatial size of stack is ' + str(ds.x.size) + ',' + str(ds.y.size))
 
@@ -2226,12 +2229,9 @@ def fit_stack(fn_stack, fit_extent=None, fn_ref_dem=None, ref_dem_date=None, fil
         # get_vgm_by_bin(arr_vals, bin_vals, fn_prefilt_stack, outfile, inc_mask=None, exc_mask=None, nproc=1)
 
     # define temporal prediction output vector
-    if tlim is None:
-        y0 = t_vals[0].astype('datetime64[D]').astype(object).year
-        y1 = t_vals[-1].astype('datetime64[D]').astype(object).year + 1.1
-    else:
-        y0 = tlim[0].astype('datetime64[D]').astype(object).year
-        y1 = tlim[-1].astype('datetime64[D]').astype(object).year
+    y0 = t_vals[0].astype('datetime64[D]').astype(object).year
+    y1 = t_vals[-1].astype('datetime64[D]').astype(object).year + 1.1
+
     fit_t = np.arange(y0, y1 + tstep, tstep) - y0
     nice_fit_t = [np.timedelta64(int(d), 'D').astype(int) for d in np.round(fit_t * 365.2524)]
 
